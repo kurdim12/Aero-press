@@ -1,0 +1,19 @@
+{
+  // Root project: build tooling, shared pure modules, and Node-side unit tests.
+  // The Worker and the web app have their own tsconfig.json in their folders.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "scripts", "shared", "test/unit"]
+}
