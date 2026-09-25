@@ -39,8 +39,12 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   except plain-http local/private-network hosts (so LAN phone testing works in dev).
 - Schema additions beyond the brief: `teams.pin_hash/pin_salt`, `login_attempts.first_failed_at`,
   `duel_judges` table, `duels.rematch_of`.
-- PBKDF2 100k iterations costs about 25 ms CPU per sign-in. The Workers Free plan caps CPU at 10 ms,
-  so production needs Workers Paid unless the user decides otherwise (raised at checkpoint 1).
+- PBKDF2 100k iterations costs about 15 ms of CPU (measured raw in Node on a SHA-NI Xeon; the
+  25 ms end-to-end sign-in figure includes D1 time, which isn't CPU). The Workers Free plan caps
+  CPU at 10 ms per request. The user has the Cloudflare Pro *website* plan, which does not include
+  Workers Paid ($5/month, separate). Pending: user adds Workers Paid (recommended) or accepts
+  fewer iterations. Only matters at deploy (phase 7). Their Pro domain can host the app on a
+  subdomain via a Worker custom domain.
 - This cloud environment's egress blocks api.cloudflare.com; deploying from here needs the network
   policy changed and a `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` in the environment (new session).
 
