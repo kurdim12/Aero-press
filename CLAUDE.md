@@ -67,7 +67,28 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   only empty championship settings, and assigns everything to the owner. Warnings carry a code,
   count and examples; the web app words them. Sample backup: test/fixtures/v1-backup.json.
 
+- Brew plan (`shared/phases.ts`): bloom, steep, flip (10 s, inverted only), press, bypass (15 s,
+  if any), pour (15 s). Checked against the 5:00 window `WINDOW_S`. Without a press start or press
+  time the plan stops after the bloom (`missing` lists what to add).
+- Timer (`web/src/brew/timer.ts`): one app-wide store built on timestamps and saved in localStorage,
+  so it survives tab switches and reloads. One brew at a time. Beep plus vibrate on each step
+  (iOS: `navigator.audioSession.type='playback'`), and screen wake lock while running.
+- Offline:
+  - The service worker is generated at build (`web/sw-template.js` + the vite plugin). It
+    precaches the shell, serves navigations network-first and assets cache-first, and never
+    touches `/api`.
+  - A localStorage snapshot of me, recipes and beans (`ap-offline-v1`) is preloaded into the
+    query cache.
+  - Brews logged offline wait in `ap-brew-queue-v1`, keyed by member, with client IDs.
+- POST /api/brews is idempotent: the same id from the same member returns the saved brew, and an
+  id owned by anyone else gets 409 `brew_id_taken`. `brewed_at` is kept if it falls between
+  30 days back and 5 minutes ahead; otherwise the server uses its own time. The server
+  computes EY from the recipe dose; the form only previews it. Scores are 1–10 in half steps, and
+  a score nobody touched is saved as null.
+- Navigation: new screens open at the top; Back keeps the browser's scroll restore (`web/src/scroll.ts`).
+
 ## Phase status
 1. Skeleton and auth: built (checkpoint 1, approved).
-2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2).
-3. Brew mode and log (timer, offline queue, manual log, EY): next.
+2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2, approved).
+3. Brew mode and log (timer, offline queue, manual log, EY): built (checkpoint 3).
+4. Duels, Elo, leaderboard: next.

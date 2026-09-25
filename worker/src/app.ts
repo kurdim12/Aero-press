@@ -6,6 +6,7 @@ import type { ApiErrorBody } from '../../shared/types';
 import { ApiError } from './lib/errors';
 import { authRoutes } from './routes/auth';
 import { beanRoutes } from './routes/beans';
+import { brewRoutes } from './routes/brews';
 import { importRoutes } from './routes/import';
 import { memberRoutes } from './routes/members';
 import { recipeRoutes } from './routes/recipes';
@@ -28,6 +29,7 @@ export function createApp() {
   app.route('/team', teamRoutes);
   app.route('/beans', beanRoutes);
   app.route('/recipes', recipeRoutes);
+  app.route('/brews', brewRoutes);
   app.route('/import', importRoutes);
 
   app.notFound((c) =>

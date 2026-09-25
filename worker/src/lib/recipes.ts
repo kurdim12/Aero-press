@@ -151,22 +151,28 @@ export async function getRecipeRow(db: D1Database, teamId: string, id: string): 
 
 type BrewDbRow = Omit<BrewRow, 'member_initials'>;
 
+const BREW_SELECT = `
+  SELECT w.id, w.recipe_id, w.member_id, m.name AS member_name, w.bean_id, b.name AS bean_name,
+         w.grind_used, w.total_time_s, w.tds_pct, w.beverage_g, w.ey_pct,
+         w.sweetness, w.acidity, w.body, w.clarity, w.finish, w.overall, w.notes, w.ai_read, w.created_at
+    FROM brews w
+    LEFT JOIN members m ON m.id = w.member_id
+    LEFT JOIN beans b ON b.id = w.bean_id`;
+
+const toBrewRow = (w: BrewDbRow): BrewRow => ({ ...w, member_initials: initialsOf(w.member_name ?? '') });
+
 export async function listRecipeBrews(db: D1Database, teamId: string, recipeId: string): Promise<BrewRow[]> {
   const { results } = await db
-    .prepare(
-      `SELECT w.id, w.recipe_id, w.member_id, m.name AS member_name, w.bean_id, b.name AS bean_name,
-              w.grind_used, w.total_time_s, w.tds_pct, w.beverage_g, w.ey_pct,
-              w.sweetness, w.acidity, w.body, w.clarity, w.finish, w.overall, w.notes, w.ai_read, w.created_at
-         FROM brews w
-         LEFT JOIN members m ON m.id = w.member_id
-         LEFT JOIN beans b ON b.id = w.bean_id
-        WHERE w.team_id = ? AND w.recipe_id = ?
-        ORDER BY w.created_at DESC
-        LIMIT 200`,
-    )
+    .prepare(`${BREW_SELECT} WHERE w.team_id = ? AND w.recipe_id = ? ORDER BY w.created_at DESC LIMIT 200`)
     .bind(teamId, recipeId)
     .all<BrewDbRow>();
-  return results.map((w) => ({ ...w, member_initials: initialsOf(w.member_name ?? '') }));
+  return results.map(toBrewRow);
+}
+
+export async function getBrewRow(db: D1Database, teamId: string, id: string): Promise<BrewRow> {
+  const row = await db.prepare(`${BREW_SELECT} WHERE w.id = ? AND w.team_id = ?`).bind(id, teamId).first<BrewDbRow>();
+  if (!row) throw notFound('brew');
+  return toBrewRow(row);
 }
 
 const round2 = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);

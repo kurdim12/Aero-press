@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, Route, Switch } from 'wouter';
 import type { MeResponse } from '../../shared/types';
 import { errorMessage } from './api';
@@ -7,6 +8,9 @@ import { TabBar } from './components/TabBar';
 import { BeanFormScreen } from './screens/BeanFormScreen';
 import { BeansScreen } from './screens/BeansScreen';
 import { BoardScreen } from './screens/BoardScreen';
+import { BrewLogScreen } from './screens/BrewLogScreen';
+import { BrewScreen } from './screens/BrewScreen';
+import { BrewTimerScreen } from './screens/BrewTimerScreen';
 import { ComingSoonScreen } from './screens/ComingSoonScreen';
 import { CompareScreen } from './screens/CompareScreen';
 import { ImportScreen } from './screens/ImportScreen';
@@ -18,6 +22,9 @@ import { RecipesScreen } from './screens/RecipesScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { SetupScreen } from './screens/SetupScreen';
 import { SignInScreen } from './screens/SignInScreen';
+import { startBrewSync } from './offline/brewSync';
+import { invalidateLibrary } from './queries';
+import { useScrollToTop } from './scroll';
 import { MeProvider, meQuery, setupStatusQuery } from './session';
 import { strings } from './strings';
 
@@ -25,17 +32,22 @@ export function App() {
   const status = useQuery(setupStatusQuery);
   const me = useQuery({ ...meQuery, enabled: status.data?.needs_setup === false });
 
-  if (status.isPending) return <Splash />;
+  // Data first: when offline, the saved copy keeps the app usable even though fetches fail.
+  if (status.data?.needs_setup) return <SetupScreen />;
+  if (me.data) return <Shell me={me.data} />;
+  if (me.data === null) return <SignInScreen />;
   if (status.isError) return <LoadError error={status.error} retry={() => void status.refetch()} />;
-  if (status.data.needs_setup) return <SetupScreen />;
-  if (me.isPending) return <Splash />;
   if (me.isError) return <LoadError error={me.error} retry={() => void me.refetch()} />;
-  if (!me.data) return <SignInScreen />;
-  return <Shell me={me.data} />;
+  return <Splash />;
 }
 
 function Shell({ me }: { me: MeResponse }) {
   const isOwner = me.member.role === 'owner';
+  const qc = useQueryClient();
+  const memberId = me.member.id;
+  // Brews saved offline go up whenever the connection comes back.
+  useEffect(() => startBrewSync(memberId, () => void invalidateLibrary(qc)), [memberId, qc]);
+  useScrollToTop();
   return (
     <MeProvider value={me}>
       <div className="app">
@@ -54,9 +66,9 @@ function Shell({ me }: { me: MeResponse }) {
           <Route path="/recipes/:id/compare">{(p) => <CompareScreen id={p.id} />}</Route>
           <Route path="/recipes/:id/lineage">{(p) => <LineageScreen id={p.id} />}</Route>
           <Route path="/recipes/:id">{(p) => <RecipeDetailScreen id={p.id} />}</Route>
-          <Route path="/brew">
-            <ComingSoonScreen section="brew" />
-          </Route>
+          <Route path="/brew" component={BrewScreen} />
+          <Route path="/brew/:id/log">{(p) => <BrewLogScreen id={p.id} />}</Route>
+          <Route path="/brew/:id">{(p) => <BrewTimerScreen id={p.id} />}</Route>
           <Route path="/duel">
             <ComingSoonScreen section="duel" />
           </Route>

@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { BrewAverages, BrewRow, RecipeRow } from '../../../shared/types';
+import { WINDOW_S, planBrew } from '../../../shared/phases';
 import { api, errorMessage } from '../api';
 import { FormError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
+import { useFlash } from '../flash';
 import { formatDate, formatNumber, formatPercent, formatSeconds } from '../format';
 import { invalidateLibrary, recipeQuery } from '../queries';
 import { RECIPE_DISPLAY_FIELDS } from '../recipeFields';
@@ -15,6 +17,7 @@ const d = s.detail;
 
 export function RecipeDetailScreen({ id }: { id: string }) {
   const detail = useQuery(recipeQuery(id));
+  const flash = useFlash();
 
   if (detail.isPending) {
     return (
@@ -41,6 +44,11 @@ export function RecipeDetailScreen({ id }: { id: string }) {
     <>
       <TopBar title={recipe.display_code} backHref="/recipes" />
       <main className="page shell-main">
+        {flash && (
+          <p className="notice" role="status" style={{ marginTop: 8 }}>
+            {flash}
+          </p>
+        )}
         <Hero recipe={recipe} />
         <Actions recipe={recipe} />
         <section className="section">
@@ -52,6 +60,7 @@ export function RecipeDetailScreen({ id }: { id: string }) {
                 <dd>{field.show(recipe) || strings.common.none}</dd>
               </div>
             ))}
+            <PlannedTime recipe={recipe} />
           </dl>
         </section>
         <Averages averages={averages} />
@@ -100,6 +109,12 @@ function Actions({ recipe: r }: { recipe: RecipeRow }) {
         {d.cloneAndTweak}
       </Link>
       <div className="action-row">
+        <Link href={`/brew/${r.id}`} className="btn secondary">
+          {strings.brew.brewThis}
+        </Link>
+        <Link href={`/brew/${r.id}/log`} className="btn secondary">
+          {strings.brew.logBrew}
+        </Link>
         <Link href={`/recipes/${r.id}/compare`} className="btn secondary">
           {d.compare}
         </Link>
@@ -119,6 +134,20 @@ function Actions({ recipe: r }: { recipe: RecipeRow }) {
       )}
       {lock.isError && <FormError>{errorMessage(lock.error)}</FormError>}
       {r.locked && <p className="notice">{isOwner ? d.lockedNoteOwner : d.lockedNote}</p>}
+    </div>
+  );
+}
+
+/** Planned total from the brew steps, and whether it fits the 5-minute window. */
+function PlannedTime({ recipe }: { recipe: RecipeRow }) {
+  const plan = planBrew(recipe);
+  if (plan.missing.length > 0) return null;
+  return (
+    <div className="kv">
+      <dt>{d.plannedTime}</dt>
+      <dd className={plan.fits ? undefined : 'warn-text'}>
+        {formatSeconds(plan.total)} · {plan.fits ? strings.brew.fits : strings.brew.over(formatSeconds(plan.total - WINDOW_S))}
+      </dd>
     </div>
   );
 }

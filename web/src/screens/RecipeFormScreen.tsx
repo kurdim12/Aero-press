@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import { METHODS, type Method, type RecipeFields, type RecipeRow } from '../../../shared/types';
+import { WINDOW_S, planBrew } from '../../../shared/phases';
 import type { RecipeInput } from '../../../shared/schemas';
 import { ApiError, api, errorMessage } from '../api';
 import {
@@ -192,6 +193,7 @@ function RecipeForm({ mode, source }: { mode: Mode; source?: RecipeRow }) {
     { value: '', label: t.noBean },
     ...(beans.data?.beans.map((b) => ({ value: b.id, label: b.name })) ?? []),
   ];
+  const plan = planBrew(toFields(values).fields);
   const hasHistory = mode.kind === 'edit' && source && (source.brew_count > 0 || source.duels > 0);
   const lockedEdit = mode.kind === 'edit' && source?.locked;
 
@@ -286,6 +288,12 @@ function RecipeForm({ mode, source }: { mode: Mode; source?: RecipeRow }) {
               <NumberField label={f.bypass} unit={strings.units.g} value={values.bypass_g} onChange={set('bypass_g')} {...field('bypass_g')} />
               <TextField label={f.bypassTemp} placeholder={t.placeholders.bypassTemp} value={values.bypass_temp} onChange={set('bypass_temp')} maxLength={40} {...field('bypass_temp')} />
             </div>
+            {plan.missing.length === 0 && (
+              <p className={`plan-line${plan.fits ? '' : ' warn'}`} role="status" style={{ marginTop: -4 }}>
+                {strings.brew.planned(formatSeconds(plan.total))} ·{' '}
+                {plan.fits ? strings.brew.fits : strings.brew.over(formatSeconds(plan.total - WINDOW_S))}
+              </p>
+            )}
             <TextAreaField
               label={f.otherSteps}
               placeholder={t.placeholders.otherSteps}

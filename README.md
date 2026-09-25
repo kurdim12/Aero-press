@@ -5,8 +5,8 @@ rank recipes with blind head-to-head duels (Elo), monitor progress, and get AI c
 
 One Cloudflare Worker serves both the API (Hono + D1) and the web app (Vite + React PWA).
 
-> Build status: **Phase 2 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
-> compare, lineage and locking; v1 import).
+> Build status: **Phase 3 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
+> compare, lineage and locking; v1 import; brew timer, brew log with extraction yield, offline brewing).
 > The owner's one-page guide (add a member, reset a PIN, AI budget, backups) arrives with the deploy in phase 7.
 
 ## Run it on your computer
@@ -30,8 +30,17 @@ npm run dev:lan
 ```
 
 Then open `http://<your-computer's-IP>:8787` on the phone (on a Mac: System Settings → Wi-Fi →
-Details → IP address). Plain http is fine for sign-in during development. Features that
-browsers only allow over https (installing the app, keeping the screen awake) need the deployed version.
+Details → IP address). Plain http is fine for sign-in, the brew timer and logging. Browsers
+only allow some features over https: working offline, keeping the screen awake, and installing
+the app. Those need the deployed version, or `http://localhost:8787` on the computer itself.
+
+### Brewing without a connection
+
+Open the app online once, and after that it works without a connection. The timer runs,
+and brews you log wait on the phone ("1 brew is waiting to sync"). They go up by themselves
+when the connection comes back. Brews that are still waiting stay on the phone after
+sign-out and sync the next time that person signs in there. To try it on the computer, open
+Chrome's DevTools, then Network › Offline.
 
 ### Import your v1 backup
 

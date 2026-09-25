@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
+import { useOnline } from '../offline/useOnline';
 import { useMe } from '../session';
 import { strings } from '../strings';
 import { BackIcon } from './Icons';
@@ -15,6 +16,7 @@ interface TopBarProps {
 
 export function TopBar({ title, backHref, hideAvatar, actions }: TopBarProps) {
   const me = useMe();
+  const online = useOnline();
   return (
     <header className="topbar">
       <div className="page topbar-inner">
@@ -24,6 +26,7 @@ export function TopBar({ title, backHref, hideAvatar, actions }: TopBarProps) {
           </Link>
         )}
         <h1 className="topbar-title">{title}</h1>
+        {!online && <span className="tag warn">{strings.shell.offline}</span>}
         {actions}
         {!hideAvatar && (
           <Link href="/settings" className="icon-btn" aria-label={strings.shell.openSettings} style={{ marginRight: -4 }}>

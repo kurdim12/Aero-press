@@ -1083,6 +1083,10 @@ input[type='date'].input {
   background: var(--warn-soft);
 }
 
+.banner strong {
+  font-weight: 800;
+}
+
 /* ---------- Phase 2: lists and filters ---------- */
 
 .btn.compact {
@@ -1383,7 +1387,7 @@ dl.kv-list.section {
 .progress {
   height: 8px;
   border-radius: 999px;
-  background: var(--bg-sunken);
+  background: var(--line);
   overflow: hidden;
 }
 
@@ -1392,4 +1396,273 @@ dl.kv-list.section {
   height: 100%;
   background: var(--accent);
   transition: width 0.2s ease;
+}
+
+/* ---------- Phase 3: brew mode ---------- */
+
+.brew-name {
+  margin-top: 4px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chips li {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.plan-line {
+  margin-top: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.plan-line.warn,
+.warn-text {
+  color: var(--warn);
+}
+
+.stat-num.warn {
+  color: var(--warn);
+}
+
+/* Readable at arm's length. */
+.clock {
+  margin-top: 14px;
+  font-size: clamp(96px, 36vw, 210px);
+  line-height: 0.9;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.clock.over {
+  color: var(--warn);
+}
+
+.over-label {
+  text-align: center;
+  color: var(--warn);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.phase-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 16px 0;
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+
+.phase-panel.finished {
+  border-top-color: var(--gold);
+}
+
+.phase-title {
+  font-size: 40px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.phase-detail {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.phase-left {
+  font-size: 22px;
+  font-weight: 800;
+  font-stretch: 75%;
+  color: var(--accent);
+}
+
+.phase-next {
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+/* Sized by label so "Log this brew" stays on one line next to Pause/Resume. */
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.controls > .btn {
+  flex: 1 1 auto;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.btn.huge {
+  min-height: 72px;
+  font-size: clamp(18px, 5.6vw, 22px);
+  border-radius: 16px;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.steps li {
+  display: flex;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.steps li.current {
+  margin: 0 -8px;
+  padding: 12px 8px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+
+.steps li.past {
+  color: var(--ink-3);
+}
+
+.step-at {
+  width: 44px;
+  flex-shrink: 0;
+  font-weight: 800;
+  font-stretch: 75%;
+  font-size: 18px;
+}
+
+.step-body {
+  display: grid;
+  gap: 2px;
+}
+
+.step-body span {
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+.tab-dot {
+  position: absolute;
+  top: 8px;
+  right: calc(50% - 18px);
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg-raised);
+}
+
+/* ---------- Phase 3: brew log ---------- */
+
+.ey-line {
+  font-size: 17px;
+  font-weight: 800;
+  font-stretch: 75%;
+  word-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.score {
+  display: grid;
+  gap: 4px;
+}
+
+.score-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.score-head .field-label {
+  flex: 1;
+}
+
+.score-value {
+  font-size: 26px;
+  min-width: 40px;
+  text-align: right;
+}
+
+.score.unset .score-value {
+  color: var(--ink-3);
+}
+
+.score-clear {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 34px;
+  height: 34px;
+  margin-top: -13px;
+  border: 3px solid var(--bg);
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.slider::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--bg);
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.score.unset .slider::-webkit-slider-thumb {
+  background: color-mix(in srgb, var(--ink) 26%, var(--bg));
+}
+
+.score.unset .slider::-moz-range-thumb {
+  background: color-mix(in srgb, var(--ink) 26%, var(--bg));
 }

@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import { Link, useLocation } from 'wouter';
+import { useTimer } from '../brew/timer';
 import { strings } from '../strings';
 import { BeanIcon, BoardIcon, BrewIcon, CoachIcon, DuelIcon, RecipeIcon } from './Icons';
 
@@ -25,6 +26,7 @@ function isActive(href: string, location: string): boolean {
 
 export function TabBar() {
   const [location] = useLocation();
+  const brewing = useTimer().status !== 'idle';
   return (
     <nav className="tabbar" aria-label={strings.tabs.label}>
       <ul>
@@ -33,6 +35,7 @@ export function TabBar() {
             <Link href={href} className="tab" aria-current={isActive(href, location) ? 'page' : undefined}>
               <Icon />
               <span>{label}</span>
+              {href === '/brew' && brewing && <span className="tab-dot" role="img" aria-label={strings.shell.brewRunning} />}
             </Link>
           </li>
         ))}

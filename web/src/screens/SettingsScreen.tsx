@@ -7,6 +7,7 @@ import { PinField } from '../components/Fields';
 import { ChevronIcon } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
 import { TopBar } from '../components/TopBar';
+import { useQueuedBrews } from '../offline/brewSync';
 import { clearSessionData, forgetMember, membersQuery, useIsOwner, useMe } from '../session';
 import { strings } from '../strings';
 import { getThemePref, setThemePref, type ThemePref } from '../theme';
@@ -22,6 +23,7 @@ export function SettingsScreen() {
   const [teamPinOpen, setTeamPinOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const members = useQuery({ ...membersQuery, enabled: isOwner });
+  const unsynced = useQueuedBrews(me.member.id).length;
   const activeCount = members.data?.members.filter((m) => m.active).length;
 
   const signOut = useMutation({
@@ -120,7 +122,8 @@ export function SettingsScreen() {
           </section>
         )}
 
-        <section className="section">
+        <section className="section btn-stack">
+          {unsynced > 0 && <p className="banner warn">{s.unsyncedWarning(unsynced)}</p>}
           <button type="button" className="btn secondary block" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
             {signOut.isPending ? s.signingOut : s.signOut}
           </button>

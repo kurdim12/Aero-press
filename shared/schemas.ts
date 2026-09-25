@@ -263,3 +263,37 @@ export const recipeListQuery = z.object({
   bean: id.optional(),
 });
 export type RecipeListQuery = z.input<typeof recipeListQuery>;
+
+// ---------- Brews ----------
+
+/** IDs a phone makes for a brew it may have to queue offline, so retries never duplicate it. */
+export const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,40}$/;
+
+const brewScore = (label: string) =>
+  z
+    .number({ error: `${label} must be a number.` })
+    .min(1, `${label} is between 1 and 10.`)
+    .max(10, `${label} is between 1 and 10.`)
+    .multipleOf(0.5, `${label} goes in half steps, like 7 or 7.5.`)
+    .nullable()
+    .optional();
+
+export const brewInput = z.object({
+  id: z.string().regex(CLIENT_ID_PATTERN, 'This brew has a bad id. Log it again.').optional(),
+  recipe_id: id,
+  bean_id: id.nullable().optional(),
+  grind_used: text(40),
+  total_time_s: seconds('Total time', 1800),
+  tds_pct: measure('TDS', 0.1, 25),
+  beverage_g: measure('Beverage weight', 1, 1000),
+  sweetness: brewScore('Sweetness'),
+  acidity: brewScore('Acidity'),
+  body: brewScore('Body'),
+  clarity: brewScore('Clarity'),
+  finish: brewScore('Finish'),
+  overall: brewScore('Overall'),
+  notes: text(2000),
+  /** When the brew happened, for logs synced later. Ignored if implausible. */
+  brewed_at: z.number().int().positive().optional(),
+});
+export type BrewInput = z.input<typeof brewInput>;

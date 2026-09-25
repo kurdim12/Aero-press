@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import { queryOptions, type QueryClient } from '@tanstack/react-query';
 import type { MeResponse, MembersResponse, SetupStatus, SignInList } from '../../shared/types';
 import { ApiError, api } from './api';
+import { forgetSnapshot } from './offline/snapshot';
 
 export const setupStatusQuery = queryOptions({
   queryKey: ['setup-status'],
@@ -41,6 +42,7 @@ const PUBLIC_QUERIES = new Set(['setup-status', 'me', 'signin-list']);
  * screen first, then drop the signed-in data. Safe to call more than once.
  */
 export function clearSessionData(qc: QueryClient): void {
+  forgetSnapshot();
   qc.setQueryData(meQuery.queryKey, null);
   qc.removeQueries({ predicate: (q) => !PUBLIC_QUERIES.has(String(q.queryKey[0])) });
 }

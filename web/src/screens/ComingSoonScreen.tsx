@@ -1,7 +1,7 @@
 import { TopBar } from '../components/TopBar';
 import { strings } from '../strings';
 
-type Section = 'brew' | 'duel' | 'coach';
+type Section = 'duel' | 'coach';
 
 /** Placeholder for tabs that later phases fill in. */
 export function ComingSoonScreen({ section }: { section: Section }) {
