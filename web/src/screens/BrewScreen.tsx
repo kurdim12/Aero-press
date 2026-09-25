@@ -50,7 +50,7 @@ export function BrewScreen() {
           {running && (
             <Link href={`/brew/${running.id}`} className="banner" style={{ textDecoration: 'none', color: 'inherit' }}>
               <span style={{ flex: 1 }}>
-                {b.inProgress(running.display_code, formatSeconds(elapsedMs(timer, now) / 1000))}
+                {b.inProgress(running.display_code, formatSeconds(Math.floor(elapsedMs(timer, now) / 1000)))}
                 <span className="row-sub">{b.backToTimer}</span>
               </span>
             </Link>

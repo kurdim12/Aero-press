@@ -85,6 +85,24 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   30 days back and 5 minutes ahead; otherwise the server uses its own time. The server
   computes EY from the recipe dose; the form only previews it. Scores are 1–10 in half steps, and
   a score nobody touched is saved as null.
+- The phone sends `member_id` with every brew. If it isn't the session's member, the server
+  answers 409 `wrong_member` and the brew keeps waiting, so a brew logged offline never lands on
+  whoever signs in next.
+- `failureKind` (brewQueue.ts) is the one rule for failures. Only a refusal of the brew itself is
+  final. These keep it waiting:
+  - offline, or no answer within 10 s;
+  - 401 or `wrong_member`;
+  - 5xx, 408 or 429.
+
+  The log form checks the ranges in `shared/limits.ts` (shared with the zod schema) before
+  saving, so the server has no reason to refuse a queued brew later.
+- Sign-out needs a connection: the phone is cleared only after the server ends the session.
+- Timer:
+  - A brew left running stops itself 2 minutes after the later of its planned end and 5:00.
+  - A timer started more than an hour ago is dropped when the app loads.
+  - The clock shows whole seconds, rounded down.
+- The signed-in shell prefetches all recipes and beans, so the offline copy has them straight
+  after sign-in.
 - Navigation: new screens open at the top; Back keeps the browser's scroll restore (`web/src/scroll.ts`).
 
 ## Phase status

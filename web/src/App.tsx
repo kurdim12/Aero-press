@@ -23,7 +23,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { SetupScreen } from './screens/SetupScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { startBrewSync } from './offline/brewSync';
-import { invalidateLibrary } from './queries';
+import { beansQuery, invalidateLibrary, recipesQuery } from './queries';
 import { useScrollToTop } from './scroll';
 import { MeProvider, meQuery, setupStatusQuery } from './session';
 import { strings } from './strings';
@@ -47,6 +47,12 @@ function Shell({ me }: { me: MeResponse }) {
   const memberId = me.member.id;
   // Brews saved offline go up whenever the connection comes back.
   useEffect(() => startBrewSync(memberId, () => void invalidateLibrary(qc)), [memberId, qc]);
+  // Put the recipes and beans on the phone right after sign-in (the offline copy saves them),
+  // so the timer and the log work offline even if nobody opened those tabs first.
+  useEffect(() => {
+    void qc.prefetchQuery(recipesQuery('all', null));
+    void qc.prefetchQuery(beansQuery);
+  }, [memberId, qc]);
   useScrollToTop();
   return (
     <MeProvider value={me}>

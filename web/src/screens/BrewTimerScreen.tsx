@@ -48,6 +48,8 @@ function Timer({ recipe, timer, otherCode }: { recipe: RecipeRow; timer: TimerSt
   const runPlan = mine && timer.plan ? timer.plan : plan;
   const now = useNow(mine && timer.status === 'running');
   const elapsed = mine ? elapsedMs(timer, now) / 1000 : 0;
+  // Whole seconds shown, rounded down, so the clock and the step countdowns agree.
+  const shown = Math.floor(elapsed);
   const index = mine ? phaseIndexAt(runPlan, elapsed) : -1;
   const phases = runPlan.phases;
   const complete = runPlan.missing.length === 0;
@@ -73,7 +75,7 @@ function Timer({ recipe, timer, otherCode }: { recipe: RecipeRow; timer: TimerSt
 
   const logThis = () => {
     pauseBrew();
-    navigate(`/brew/${recipe.id}/log?time=${Math.round(elapsed)}`);
+    navigate(`/brew/${recipe.id}/log?time=${shown}`);
   };
 
   return (
@@ -109,8 +111,8 @@ function Timer({ recipe, timer, otherCode }: { recipe: RecipeRow; timer: TimerSt
           </p>
         )}
 
-        <div className={`clock condensed${over ? ' over' : ''}`} role="timer" aria-label={formatSeconds(elapsed)}>
-          {formatSeconds(elapsed)}
+        <div className={`clock condensed${over ? ' over' : ''}`} role="timer" aria-label={formatSeconds(shown)}>
+          {formatSeconds(shown)}
         </div>
         {over && <p className="over-label">{b.over5}</p>}
 

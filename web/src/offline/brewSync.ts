@@ -2,17 +2,22 @@
 // send it when the connection is back.
 import { useSyncExternalStore } from 'react';
 import type { BrewRow } from '../../../shared/types';
-import { ApiError, api } from '../api';
-import { BrewQueue, type QueuedBody, type QueuedBrew } from './brewQueue';
+import { api } from '../api';
+import { BrewQueue, type QueuedBody, type QueuedBrew, failureKind } from './brewQueue';
 import { browserStore } from './storage';
 
-export const brewQueue = new BrewQueue(browserStore(), (body) => api<BrewRow>('POST', '/api/brews', body));
+/** A connection that looks up but carries nothing shouldn't leave a brew hanging. */
+const SEND_TIMEOUT_MS = 10_000;
+const send = (body: QueuedBody) => api<BrewRow>('POST', '/api/brews', body, { timeoutMs: SEND_TIMEOUT_MS });
+
+export const brewQueue = new BrewQueue(browserStore(), send);
 
 export type SubmitResult = { saved: BrewRow } | { queued: QueuedBrew };
 
 /**
- * Save a brew. Offline, or when the network or server fails, it's queued instead; a
- * refusal (bad input, missing recipe) is thrown so the form can show it.
+ * Save a brew. When it can't be saved right now (offline, slow or failing network, server
+ * trouble, signed out meanwhile) it waits on the phone instead. Only a refusal of the brew
+ * itself is thrown, so the form can show it.
  */
 export async function submitBrew(body: QueuedBody, memberId: string, label: string): Promise<SubmitResult> {
   const queue = (): SubmitResult => {
@@ -22,9 +27,9 @@ export async function submitBrew(body: QueuedBody, memberId: string, label: stri
   };
   if (!navigator.onLine) return queue();
   try {
-    return { saved: await api<BrewRow>('POST', '/api/brews', body) };
+    return { saved: await send({ ...body, member_id: memberId }) };
   } catch (err) {
-    if (err instanceof ApiError && (err.code === 'offline' || err.status >= 500)) return queue();
+    if (failureKind(err) !== 'refused') return queue();
     throw err;
   }
 }

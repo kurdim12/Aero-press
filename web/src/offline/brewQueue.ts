@@ -41,9 +41,22 @@ export interface SyncResult {
 const isSendError = (e: unknown): e is SendError =>
   typeof e === 'object' && e !== null && typeof (e as SendError).status === 'number' && typeof (e as SendError).code === 'string';
 
+/**
+ * What a failed send means for a brew. Only 'refused' is final (the server said no to the
+ * brew itself); everything else means "not now", so the brew keeps waiting.
+ */
+export function failureKind(err: unknown): StopReason | 'refused' {
+  // Status 0: no connection, or no answer in time.
+  if (!isSendError(err) || err.status === 0) return 'offline';
+  // Someone else is signed in on this phone now.
+  if (err.status === 401 || err.code === 'wrong_member') return 'signed_out';
+  if (err.status >= 500 || err.status === 408 || err.status === 429) return 'server';
+  return 'refused';
+}
+
 export class BrewQueue {
   private listeners = new Set<() => void>();
-  private syncing: Promise<SyncResult> | null = null;
+  private syncing: { memberId: string; result: Promise<SyncResult> } | null = null;
 
   constructor(
     private readonly store: KeyValueStore,
@@ -74,13 +87,19 @@ export class BrewQueue {
   /**
    * Send this member's waiting brews, oldest first. Stops at the first sign that sending
    * can't work right now (offline, signed out, server trouble); a brew the server refuses
-   * is kept with the reason, so nothing is lost silently. One sync runs at a time.
+   * is kept with the reason, so nothing is lost silently. One sync runs at a time: a second
+   * call for the same member shares the running one, another member's waits its turn.
    */
   sync(memberId: string): Promise<SyncResult> {
-    this.syncing ??= this.run(memberId).finally(() => {
-      this.syncing = null;
-    });
-    return this.syncing;
+    if (this.syncing?.memberId === memberId) return this.syncing.result;
+    const before: Promise<unknown> = this.syncing?.result.catch(() => undefined) ?? Promise.resolve();
+    const result = before
+      .then(() => this.run(memberId))
+      .finally(() => {
+        if (this.syncing?.result === result) this.syncing = null;
+      });
+    this.syncing = { memberId, result };
+    return result;
   }
 
   private async run(memberId: string): Promise<SyncResult> {
@@ -90,22 +109,19 @@ export class BrewQueue {
       .sort((a, b) => a.queued_at - b.queued_at);
     for (const item of waiting) {
       try {
-        await this.send(item.body);
+        // The server refuses it if someone else is signed in by now, so it can't land on them.
+        await this.send({ ...item.body, member_id: item.member_id });
         this.remove(item.id);
         result.sent++;
       } catch (err) {
-        if (!isSendError(err) || err.code === 'offline' || err.status === 0) {
-          result.stopped = 'offline';
-        } else if (err.status === 401) {
-          result.stopped = 'signed_out';
-        } else if (err.status >= 500) {
-          result.stopped = 'server';
-        } else {
-          this.save(this.all().map((q) => (q.id === item.id ? { ...q, error: err.message } : q)));
-          result.refused++;
-          continue;
+        const kind = failureKind(err);
+        if (kind !== 'refused') {
+          result.stopped = kind;
+          break;
         }
-        break;
+        const reason = isSendError(err) ? err.message : '';
+        this.save(this.all().map((q) => (q.id === item.id ? { ...q, error: reason } : q)));
+        result.refused++;
       }
     }
     return result;

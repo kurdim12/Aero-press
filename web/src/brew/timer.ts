@@ -2,7 +2,7 @@
 // phone throttles the page; the state is saved so a reload or a tab switch doesn't lose a
 // brew. It ticks app-wide, so step beeps sound even while another tab is open.
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { type BrewPlan, phaseIndexAt } from '../../../shared/phases';
+import { type BrewPlan, WINDOW_S, phaseIndexAt } from '../../../shared/phases';
 import { browserStore, readJson, writeJson } from '../offline/storage';
 import { beep, unlockAudio } from './sound';
 import { holdScreenOn, releaseScreen } from './wakeLock';
@@ -27,7 +27,16 @@ const KEY = 'ap-brew-timer-v1';
 const store = browserStore();
 const IDLE: TimerState = { recipeId: null, plan: null, status: 'idle', startedAt: null, pausedAt: null, pausedMs: 0, announced: 0 };
 
+/** A brew left running stops itself this long after its planned end (or 5:00, if later). */
+const AUTO_STOP_AFTER_S = 120;
+/** A timer started longer ago than this was forgotten, not paused for later. */
+const STALE_AFTER_MS = 60 * 60_000;
+
 let state: TimerState = { ...IDLE, ...(readJson<Partial<TimerState>>(store, KEY) ?? {}) };
+if (state.startedAt !== null && Date.now() - state.startedAt > STALE_AFTER_MS) {
+  state = IDLE;
+  writeJson(store, KEY, null);
+}
 const listeners = new Set<() => void>();
 let ticker: number | null = null;
 
@@ -45,7 +54,15 @@ function commit(next: TimerState): void {
 }
 
 function tick(): void {
-  if (state.status !== 'running' || !state.plan) return;
+  if (state.status !== 'running' || !state.plan || state.startedAt === null) return;
+  const stopAtS = Math.max(state.plan.total, WINDOW_S) + AUTO_STOP_AFTER_S;
+  if (elapsedMs() / 1000 >= stopAtS) {
+    // Forgotten after the brew: freeze the clock at the stop time and let the screen sleep.
+    // No beep, even if the app was closed through the last steps.
+    const pausedAt = state.startedAt + state.pausedMs + stopAtS * 1000;
+    commit({ ...state, status: 'paused', pausedAt, announced: state.plan.phases.length });
+    return;
+  }
   const index = phaseIndexAt(state.plan, elapsedMs() / 1000);
   if (index > state.announced) {
     // "Done" only when the plan covers the whole brew; an incomplete recipe just steps on.

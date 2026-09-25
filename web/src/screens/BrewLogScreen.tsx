@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
 import type { RecipeRow } from '../../../shared/types';
 import { extractionYield } from '../../../shared/formulas';
+import { BREW_LIMITS } from '../../../shared/limits';
 import { rememberBrewedRecipe } from '../brew/lastBrewed';
 import { getTimer, resetBrew } from '../brew/timer';
 import { ApiError, errorMessage } from '../api';
@@ -18,7 +19,7 @@ import {
 import { ScoreSlider } from '../components/ScoreSlider';
 import { TopBar } from '../components/TopBar';
 import { setFlash } from '../flash';
-import { formatPercent, formatSeconds, parseNumber, parseTime } from '../format';
+import { formatNumber, formatPercent, formatSeconds, parseNumber, parseTime } from '../format';
 import { newClientId } from '../ids';
 import { submitBrew } from '../offline/brewSync';
 import { beansQuery, invalidateLibrary, recipesQuery } from '../queries';
@@ -56,6 +57,18 @@ export function BrewLogScreen({ id }: { id: string }) {
 
 type Values = { bean_id: string; grind_used: string; total_time_s: string; tds_pct: string; beverage_g: string; notes: string };
 
+/**
+ * The API's own range, checked before saving: a brew saved offline can't be corrected once
+ * the server refuses it on sync.
+ */
+function measureError(value: number | null | 'invalid', limits: { min: number; max: number }): string | undefined {
+  if (value === 'invalid') return strings.recipes.form.numberInvalid;
+  if (value !== null && (value < limits.min || value > limits.max)) {
+    return l.outOfRange(formatNumber(limits.min), formatNumber(limits.max));
+  }
+  return undefined;
+}
+
 function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: number | null }) {
   const me = useMe();
   const qc = useQueryClient();
@@ -92,8 +105,13 @@ function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: numb
     const found: Record<string, string> = {};
     const time = parseTime(values.total_time_s);
     if (time === 'invalid') found.total_time_s = strings.recipes.form.timeInvalid;
-    if (tds === 'invalid') found.tds_pct = strings.recipes.form.numberInvalid;
-    if (beverage === 'invalid') found.beverage_g = strings.recipes.form.numberInvalid;
+    else if (time !== null && time > BREW_LIMITS.total_time_s.max) {
+      found.total_time_s = l.timeTooLong(formatSeconds(BREW_LIMITS.total_time_s.max));
+    }
+    const tdsError = measureError(tds, BREW_LIMITS.tds_pct);
+    if (tdsError) found.tds_pct = tdsError;
+    const beverageError = measureError(beverage, BREW_LIMITS.beverage_g);
+    if (beverageError) found.beverage_g = beverageError;
     setErrors(found);
     if (Object.keys(found).length > 0) {
       setFormError(strings.recipes.form.fixErrors);
@@ -119,7 +137,8 @@ function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: numb
       if (getTimer().recipeId === recipe.id) resetBrew();
       if ('saved' in result) {
         setFlash(l.saved);
-        await invalidateLibrary(qc);
+        // Not awaited: if the connection drops right now, the refresh waits for it, the screen shouldn't.
+        void invalidateLibrary(qc);
         navigate(`/recipes/${recipe.id}`);
       } else {
         setFlash(l.queued);
@@ -134,9 +153,14 @@ function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: numb
     }
   };
 
+  const beanList = beans.data?.beans ?? [];
   const beanOptions = [
     { value: '', label: l.noBean },
-    ...(beans.data?.beans.map((b) => ({ value: b.id, label: b.name })) ?? []),
+    ...beanList.map((b) => ({ value: b.id, label: b.name })),
+    // Bean list not on this phone yet: the recipe's own bean still shows by name.
+    ...(recipe.bean_id && !beanList.some((b) => b.id === recipe.bean_id)
+      ? [{ value: recipe.bean_id, label: recipe.bean_name ?? '' }]
+      : []),
   ];
 
   return (

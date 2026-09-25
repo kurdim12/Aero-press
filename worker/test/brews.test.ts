@@ -70,6 +70,26 @@ describe('logging a brew', () => {
     expect(clash.body.error.code).toBe('brew_id_taken');
   });
 
+  it('never saves a queued brew as whoever is signed in by the time it syncs', async () => {
+    const { owner, recipe } = await teamWithRecipe();
+    const linaId = await addBarista(owner, 'Lina');
+    const { client: lina } = await signIn(linaId, TEAM_PIN);
+    const ownerId = (await owner.get<{ member: { id: string } }>('/api/me')).body.member.id;
+
+    // Logged offline by the owner, sent after Lina signed in on the same phone.
+    const id = 'phone-made-brew-id-0003';
+    const wrong = await lina.post('/api/brews', brew(recipe.id, { id, member_id: ownerId }));
+    expect(wrong.status).toBe(409);
+    expect(wrong.body.error.code).toBe('wrong_member');
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM brews').first<{ n: number }>();
+    expect(count?.n).toBe(0);
+
+    // Once the owner is signed in again, it goes up as theirs.
+    const right = await owner.post<BrewRow>('/api/brews', brew(recipe.id, { id, member_id: ownerId }));
+    expect(right.status).toBe(201);
+    expect(right.body.member_id).toBe(ownerId);
+  });
+
   it('keeps a plausible brew time from a phone that was offline', async () => {
     const { owner, recipe } = await teamWithRecipe();
     const anHourAgo = Date.now() - 60 * 60 * 1000;

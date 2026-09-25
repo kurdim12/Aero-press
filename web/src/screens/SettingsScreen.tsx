@@ -3,11 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { OkResponse } from '../../../shared/types';
 import { api, errorMessage } from '../api';
-import { PinField } from '../components/Fields';
+import { FormError, PinField } from '../components/Fields';
 import { ChevronIcon } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
 import { TopBar } from '../components/TopBar';
 import { useQueuedBrews } from '../offline/brewSync';
+import { useOnline } from '../offline/useOnline';
 import { clearSessionData, forgetMember, membersQuery, useIsOwner, useMe } from '../session';
 import { strings } from '../strings';
 import { getThemePref, setThemePref, type ThemePref } from '../theme';
@@ -24,12 +25,15 @@ export function SettingsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const members = useQuery({ ...membersQuery, enabled: isOwner });
   const unsynced = useQueuedBrews(me.member.id).length;
+  const online = useOnline();
   const activeCount = members.data?.members.filter((m) => m.active).length;
 
   const signOut = useMutation({
     mutationFn: () => api<OkResponse>('POST', '/api/auth/logout'),
+    // Only once the server has ended the session: clearing just the phone would leave the session
+    // cookie working, and the account would come back signed in for the next person.
     // No navigation here: the sign-in screen shows at any URL, and signing in lands on the Board.
-    onSettled: () => {
+    onSuccess: () => {
       forgetMember();
       clearSessionData(qc);
     },
@@ -124,9 +128,16 @@ export function SettingsScreen() {
 
         <section className="section btn-stack">
           {unsynced > 0 && <p className="banner warn">{s.unsyncedWarning(unsynced)}</p>}
-          <button type="button" className="btn secondary block" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
+          {signOut.isError && <FormError>{errorMessage(signOut.error)}</FormError>}
+          <button
+            type="button"
+            className="btn secondary block"
+            onClick={() => signOut.mutate()}
+            disabled={signOut.isPending || !online}
+          >
             {signOut.isPending ? s.signingOut : s.signOut}
           </button>
+          {!online && <p className="field-hint">{s.signOutOffline}</p>}
         </section>
       </main>
 

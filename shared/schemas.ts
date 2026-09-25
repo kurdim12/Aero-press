@@ -1,6 +1,7 @@
 // zod schemas for every API input. The Worker validates with these; the web app
 // only imports their inferred types.
 import { z } from 'zod';
+import { BREW_LIMITS } from './limits';
 import { IMPORT_CHUNK_MAX, METHODS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
@@ -280,12 +281,14 @@ const brewScore = (label: string) =>
 
 export const brewInput = z.object({
   id: z.string().regex(CLIENT_ID_PATTERN, 'This brew has a bad id. Log it again.').optional(),
+  /** Who logged it on the phone. A queued brew must not land on whoever is signed in by the time it syncs. */
+  member_id: id.optional(),
   recipe_id: id,
   bean_id: id.nullable().optional(),
   grind_used: text(40),
-  total_time_s: seconds('Total time', 1800),
-  tds_pct: measure('TDS', 0.1, 25),
-  beverage_g: measure('Beverage weight', 1, 1000),
+  total_time_s: seconds('Total time', BREW_LIMITS.total_time_s.max),
+  tds_pct: measure('TDS', BREW_LIMITS.tds_pct.min, BREW_LIMITS.tds_pct.max),
+  beverage_g: measure('Beverage weight', BREW_LIMITS.beverage_g.min, BREW_LIMITS.beverage_g.max),
   sweetness: brewScore('Sweetness'),
   acidity: brewScore('Acidity'),
   body: brewScore('Body'),

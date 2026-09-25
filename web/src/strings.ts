@@ -122,6 +122,7 @@ export const strings = {
     importV1Sub: 'Bring in beans, recipes, brews and duels from the old app',
     signOut: 'Sign out',
     signingOut: 'Signing out…',
+    signOutOffline: 'Signing out needs a connection. Try again once you’re online.',
   },
 
   members: {
@@ -419,6 +420,8 @@ export const strings = {
       clear: 'Clear',
       notes: 'Notes',
       notesPlaceholder: 'Hot, warm, cool?',
+      outOfRange: (min: string, max: string) => `Enter a number from ${min} to ${max}.`,
+      timeTooLong: (max: string) => `Enter a time up to ${max}.`,
       save: 'Save brew',
       saved: 'Brew saved.',
       queued: 'Brew saved on this phone.',
@@ -500,6 +503,7 @@ export const strings = {
 
   errors: {
     offline: 'You’re offline. Check the connection and try again.',
+    timeout: 'The connection is too slow right now. Try again in a moment.',
     generic: 'Something went wrong. Try again in a moment.',
     loadFailed: 'Couldn’t load the app. Check the connection and try again.',
     // Keyed by API error code. Functions receive the error body.
@@ -526,6 +530,7 @@ export const strings = {
       recipe_locked: 'This is the locked competition recipe. The owner has to unlock it before it can change.',
       recipe_not_found: 'That recipe no longer exists. Pick another recipe.',
       brew_id_taken: 'This brew clashes with another one. Log it again as a new brew.',
+      wrong_member: 'Someone else logged this brew on this phone. It syncs when they sign in here again.',
     } as Record<string, string | ((e: Record<string, unknown>) => string)>,
   },
 };

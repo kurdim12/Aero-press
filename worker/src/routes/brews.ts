@@ -25,6 +25,11 @@ brewRoutes.post('/', async (c) => {
   const me = c.get('member');
   const db = c.env.DB;
 
+  // Logged offline by someone else on this phone: never save it as the person signed in now.
+  if (input.member_id !== undefined && input.member_id !== me.id) {
+    throw new ApiError(409, 'wrong_member', 'Someone else logged this brew on this phone. It syncs when they sign in there again.');
+  }
+
   if (input.id) {
     const existing = await db
       .prepare('SELECT team_id, member_id FROM brews WHERE id = ?')

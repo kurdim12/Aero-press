@@ -35,20 +35,37 @@ export function setSignedOutHandler(handler: () => void): void {
   onSignedOut = handler;
 }
 
-export async function api<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
+export interface ApiOptions {
+  /** Give up after this long. Like no connection, it fails with status 0 (code 'timeout'). */
+  timeoutMs?: number;
+}
+
+export async function api<T>(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+  options: ApiOptions = {},
+): Promise<T> {
+  const controller = options.timeoutMs ? new AbortController() : null;
+  const timer = controller ? window.setTimeout(() => controller.abort(), options.timeoutMs) : undefined;
   let res: Response;
+  let text: string;
   try {
     res = await fetch(path, {
       method,
       credentials: 'same-origin',
       headers: body === undefined ? {} : { 'content-type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller?.signal,
     });
+    text = await res.text();
   } catch {
+    if (controller?.signal.aborted) throw new ApiError(0, 'timeout', strings.errors.timeout);
     throw new ApiError(0, 'offline', strings.errors.offline);
+  } finally {
+    window.clearTimeout(timer);
   }
 
-  const text = await res.text();
   let data: unknown = null;
   try {
     data = text ? JSON.parse(text) : null;
