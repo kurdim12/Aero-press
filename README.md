@@ -5,7 +5,8 @@ rank recipes with blind head-to-head duels (Elo), monitor progress, and get AI c
 
 One Cloudflare Worker serves both the API (Hono + D1) and the web app (Vite + React PWA).
 
-> Build status: **Phase 1 of 7** (skeleton, team setup, PIN sign-in, roles, members).
+> Build status: **Phase 2 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
+> compare, lineage and locking; v1 import).
 > The owner's one-page guide (add a member, reset a PIN, AI budget, backups) arrives with the deploy in phase 7.
 
 ## Run it on your computer
@@ -31,6 +32,12 @@ npm run dev:lan
 Then open `http://<your-computer's-IP>:8787` on the phone (on a Mac: System Settings → Wi-Fi →
 Details → IP address). Plain http is fine for sign-in during development. Features that
 browsers only allow over https (installing the app, keeping the screen awake) need the deployed version.
+
+### Import your v1 backup
+
+Sign in as the owner, then **Settings › Import v1 backup** and pick the JSON file the old app
+exported. You'll see what's in it before anything is saved, and importing twice is safe.
+To try the flow without your own file, use `test/fixtures/v1-backup.json` (made-up sample data).
 
 ### Start over with an empty database
 

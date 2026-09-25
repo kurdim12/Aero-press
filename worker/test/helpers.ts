@@ -1,6 +1,8 @@
 import { applyD1Migrations, reset } from 'cloudflare:test';
 import { env, exports } from 'cloudflare:workers';
-import type { MeResponse } from '../../shared/types';
+import { IMPORT_CHUNK_MAX, type ImportResult, type MeResponse } from '../../shared/types';
+import fixture from '../../test/fixtures/v1-backup.json';
+import { chunk, planV1Import } from '../../shared/v1import';
 
 /** Wipe D1 and re-apply migrations so each test starts from an empty deployment. */
 export async function freshDb(): Promise<void> {
@@ -86,3 +88,45 @@ export async function signIn(memberId: string, pin: string): Promise<{ client: C
   const res = await client.post('/api/auth/login', { member_id: memberId, pin });
   return { client, res };
 }
+
+// ---------- Phase 2 helpers ----------
+
+/** Import a v1 backup the way the web app does: map in "the browser", then send chunks. */
+export async function importV1(owner: Client, data: unknown = fixture): Promise<ImportResult[]> {
+  const planned = planV1Import(data);
+  if (!planned.ok) throw new Error(`plan failed: ${planned.error}`);
+  const { plan } = planned;
+  const results: ImportResult[] = [];
+  for (const kind of ['beans', 'recipes', 'brews', 'duels'] as const) {
+    for (const records of chunk<object>(plan[kind], IMPORT_CHUNK_MAX)) {
+      const res = await owner.post<ImportResult>('/api/import/v1', { kind, records });
+      if (res.status !== 200) throw new Error(`import ${kind} failed: ${res.status} ${JSON.stringify(res.body)}`);
+      results.push(res.body);
+    }
+  }
+  if (plan.settings) {
+    const res = await owner.post<ImportResult>('/api/import/v1', { kind: 'settings', settings: plan.settings });
+    if (res.status !== 200) throw new Error(`import settings failed: ${res.status} ${JSON.stringify(res.body)}`);
+    results.push(res.body);
+  }
+  return results;
+}
+
+export const resultFor = (results: ImportResult[], kind: ImportResult['kind']) => {
+  const found = results.find((r) => r.kind === kind);
+  if (!found) throw new Error(`no ${kind} result`);
+  return found;
+};
+
+/** Minimal valid recipe body for the create endpoint. */
+export const recipeBody = (overrides: Record<string, unknown> = {}) => ({
+  name: 'Test recipe',
+  method: 'Inverted',
+  dose_g: 18,
+  water_g: 250,
+  temp_c: 90,
+  bloom_ends_s: 30,
+  press_starts_s: 105,
+  press_duration_s: 30,
+  ...overrides,
+});

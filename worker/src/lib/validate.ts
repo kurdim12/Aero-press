@@ -17,6 +17,24 @@ export async function readJson<S extends z.ZodType>(c: Context, schema: S): Prom
   } catch {
     throw new ApiError(400, 'bad_json', 'The app sent data it could not read. Reload the page and try again.');
   }
+  return parseWith(schema, raw);
+}
+
+/** Validate query-string parameters with zod. */
+export function readQuery<S extends z.ZodType>(c: Context, schema: S): z.output<S> {
+  return parseWith(schema, c.req.query());
+}
+
+/** A path id: anything malformed is simply "not found". */
+export function idParam(c: Context, what: string, name = 'id'): string {
+  const value = c.req.param(name) ?? '';
+  if (value.length < 1 || value.length > 100) {
+    throw new ApiError(404, 'not_found', `That ${what} no longer exists. Go back and refresh the list.`);
+  }
+  return value;
+}
+
+function parseWith<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
   const result = schema.safeParse(raw);
   if (!result.success) {
     const issue = result.error.issues[0];

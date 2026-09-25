@@ -53,6 +53,21 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
 - This cloud environment's egress blocks api.cloudflare.com; deploying from here needs the network
   policy changed and a `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` in the environment (new session).
 
+- Beans are shared; anyone edits them. One competition coffee per team, set by the owner only.
+- Recipes: any member creates (code = their next R-number, shown as initials-code, e.g. AK-R3) or
+  clones (parent_id). Author or owner edits; the edit form warns when brews/duels exist and offers
+  "Clone instead". One locked (competition) recipe per team; owner-only; locked = read-only.
+- Elo is computed on read from revealed duels (shared/elo.ts). The bean filter lists recipes on
+  that bean or duelled on it, rated on that bean's duels only. The list API returns full recipe
+  rows, so compare and lineage are computed in the browser.
+- v1 import: the browser maps the file (shared/v1import.ts) and sends chunks of 200 per kind
+  (beans, recipes parents-first, brews, duels, settings). The Worker validates with zod, skips
+  existing IDs, nulls references it can't satisfy (skips duels missing a recipe), renames
+  colliding codes to the owner's next R-number, computes missing EY from the recipe dose, fills
+  only empty championship settings, and assigns everything to the owner. Warnings carry a code,
+  count and examples; the web app words them. Sample backup: test/fixtures/v1-backup.json.
+
 ## Phase status
-1. Skeleton and auth: built (checkpoint 1).
-2. Beans, recipes, compare, lineage, v1 import: next.
+1. Skeleton and auth: built (checkpoint 1, approved).
+2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2).
+3. Brew mode and log (timer, offline queue, manual log, EY): next.

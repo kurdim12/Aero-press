@@ -91,6 +91,17 @@ export function SettingsScreen() {
                 </Link>
               </li>
               <li>
+                <Link href="/settings/import" className="row">
+                  <span className="row-main">
+                    <span className="row-title">{s.importV1}</span>
+                    <span className="row-sub">{s.importV1Sub}</span>
+                  </span>
+                  <span className="row-trail">
+                    <ChevronIcon />
+                  </span>
+                </Link>
+              </li>
+              <li>
                 <button type="button" className="row" onClick={() => setTeamPinOpen(true)}>
                   <span className="row-main">
                     <span className="row-title">{s.changeTeamPin}</span>

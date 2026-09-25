@@ -5,7 +5,10 @@ import type { AppEnv } from './env';
 import type { ApiErrorBody } from '../../shared/types';
 import { ApiError } from './lib/errors';
 import { authRoutes } from './routes/auth';
+import { beanRoutes } from './routes/beans';
+import { importRoutes } from './routes/import';
 import { memberRoutes } from './routes/members';
+import { recipeRoutes } from './routes/recipes';
 import { setupRoutes } from './routes/setup';
 import { meRoutes, teamRoutes } from './routes/team';
 
@@ -23,6 +26,9 @@ export function createApp() {
   app.route('/me', meRoutes);
   app.route('/members', memberRoutes);
   app.route('/team', teamRoutes);
+  app.route('/beans', beanRoutes);
+  app.route('/recipes', recipeRoutes);
+  app.route('/import', importRoutes);
 
   app.notFound((c) =>
     c.json<ApiErrorBody>(
