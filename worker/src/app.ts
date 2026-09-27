@@ -51,6 +51,18 @@ export function createApp() {
     }
     // Log for `wrangler tail`. Request bodies (which can hold PINs) are never logged.
     console.error('Unhandled API error', c.req.method, c.req.path, err instanceof Error ? err.stack : String(err));
+    // A deploy that skipped the migrations: the Worker runs but the database has no tables.
+    if (err instanceof Error && /no such table/i.test(err.message)) {
+      return c.json<ApiErrorBody>(
+        {
+          error: {
+            code: 'database_not_ready',
+            message: 'The database has no tables yet. Finish the deploy with `npm run deploy`, which applies the migrations.',
+          },
+        },
+        503,
+      );
+    }
     return c.json<ApiErrorBody>(
       {
         error: {
