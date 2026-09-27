@@ -85,6 +85,7 @@ export async function writeTips<S extends TipsSubject>(
   subject: S,
   id: string,
   refresh: boolean,
+  seen: number | null,
   keepAlive: (work: Promise<unknown>) => void,
 ): Promise<TipsResponse<TipsOf[S]>> {
   const db = scope.db;
@@ -94,6 +95,8 @@ export async function writeTips<S extends TipsSubject>(
   const now = Date.now();
   const current = view<S>(scope, about, row, now);
   if (current.pending || (current.tips && !refresh)) return current;
+  // Someone wrote newer tips since this phone looked: show those rather than pay again.
+  if (current.tips && seen !== null && current.at !== seen) return current;
   requireAi(scope);
 
   const marker = `${PENDING}${now}`;
@@ -115,7 +118,8 @@ export async function writeTips<S extends TipsSubject>(
   const work = (async () => {
     try {
       const tips = await WRITERS[subject](scope, id);
-      const at = Date.now();
+      // Dated when the coach started reading, so an edit made while it wrote marks them stale.
+      const at = now;
       // Saved only while the claim holds; if another phone took over a stale claim, its tips stand.
       await db
         .prepare('UPDATE ai_tips SET tips_json = ?, tips_at = ?, member_id = ?, claim = NULL WHERE id = ? AND team_id = ? AND claim = ?')

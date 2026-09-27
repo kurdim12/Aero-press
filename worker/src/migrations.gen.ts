@@ -80,5 +80,11 @@ export const MIGRATIONS: Migration[] = [
       "CREATE INDEX idx_ai_tips_team ON ai_tips (team_id, id)",
       "ALTER TABLE teams ADD COLUMN ai_auto_tips INTEGER NOT NULL DEFAULT 1"
     ]
+  },
+  {
+    "name": "0006_ai_reads.sql",
+    "queries": [
+      "-- Coach explanations the team keeps: two recipes compared (ours or World champions'), and a\n-- champion recipe broken down. The latest one per subject, written once and updated on request.\nCREATE TABLE ai_reads (\n  team_id TEXT NOT NULL REFERENCES teams (id),\n  id TEXT NOT NULL,                             -- 'compare:<ref>|<ref>' (refs sorted) or 'champion:<id>'\n  kind TEXT NOT NULL,                           -- 'compare' or 'champion'\n  result_json TEXT,                             -- NULL until the first one is written\n  result_at INTEGER,\n  member_id TEXT,                               -- who asked for the latest one\n  claim TEXT,                                   -- 'pending:<ms>' while a phone is writing it\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (team_id, id)\n);\n"
+    ]
   }
 ];

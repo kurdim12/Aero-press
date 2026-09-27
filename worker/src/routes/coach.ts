@@ -1,8 +1,11 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import type { AppEnv } from '../env';
+import { parseRef, sameRef } from '../../../shared/compare';
 import type {
   AiUsage,
-  CompareRead,
+  ChampionBreakdownResponse,
+  CompareRef,
+  CompareResponse,
   ExperimentsResponse,
   QuickLogResponse,
   ReadinessReport,
@@ -13,8 +16,9 @@ import {
   adaptInput,
   askInput,
   compareInput,
-  compareOutput,
+  compareQuery,
   experimentsOutput,
+  explainInput,
   planInput,
   quickLogInput,
   quickLogOutput,
@@ -24,7 +28,8 @@ import {
 import { requireMember } from '../middleware/auth';
 import { aiScope, aiSetup, aiUsage, askJson, askStream, monthSpend } from '../ai/client';
 import { localDay } from '../ai/config';
-import { beanFocus, buildContextPack, findRecipeByCode, recipeFocus, recipeForCoach } from '../ai/context';
+import { beanFocus, buildContextPack, findRecipeByCode, recipeFocus } from '../ai/context';
+import { championState, compareState, writeChampionBreakdown, writeCompare } from '../ai/explain';
 import { toExperiment, type TeamBean } from '../ai/experiments';
 import {
   ASK_INSTRUCTIONS,
@@ -34,15 +39,14 @@ import {
   TODAY_PROMPT,
   aboutBlock,
   adaptPrompt,
-  comparePrompt,
   dataBlock,
   planPrompt,
   quickLogUser,
 } from '../ai/prompts';
-import { notFound } from '../lib/errors';
+import { ApiError, notFound } from '../lib/errors';
 import { newId } from '../lib/ids';
-import { displayCode, listRecipes, recipeBrewAverages } from '../lib/recipes';
-import { readJson } from '../lib/validate';
+import { displayCode } from '../lib/recipes';
+import { idParam, readJson, readQuery } from '../lib/validate';
 
 // The AI coach. Every call checks the month's budget first and logs its tokens and cost.
 export const coachRoutes = new Hono<AppEnv>();
@@ -237,46 +241,37 @@ coachRoutes.post('/ask', async (c) => {
   });
 });
 
-/** The settings two recipes differ in, with each one's value (the bean by name). */
-const COMPARE_KEYS = [
-  'bean',
-  'method',
-  'filter',
-  'dose_g',
-  'water_g',
-  'ratio',
-  'temp_c',
-  'grinder',
-  'grind_setting',
-  'water_recipe',
-  'bloom_water_g',
-  'bloom_ends_s',
-  'agitation',
-  'press_starts_s',
-  'press_duration_s',
-  'bypass_g',
-  'bypass_temp',
-  'other_steps',
-  'planned_total_s',
-] as const;
+/** GET /compare?a=&b=: each side as "recipe:<id>" or "champion:<id>". */
+function compareRefs(c: Context<AppEnv>): [CompareRef, CompareRef] {
+  const query = readQuery(c, compareQuery);
+  const a = parseRef(query.a);
+  const b = parseRef(query.b);
+  if (!a || !b || sameRef(a, b)) throw new ApiError(400, 'invalid_input', 'Pick two different recipes.', { field: 'b' });
+  return [a, b];
+}
 
-const comparable = (v: unknown) => (typeof v === 'string' ? v.trim().toLowerCase() : (v ?? null));
+/** The team's kept explanation of two recipes' differences (null until someone asks). */
+coachRoutes.get('/compare', async (c) => {
+  const [a, b] = compareRefs(c);
+  return c.json<CompareResponse>(await compareState(scopeOf(c), a, b));
+});
 
-/** What the differences between two recipes are likely to do in the cup (from the compare screen). */
+/** Explain two recipes' differences (ours or champions'); kept for the whole team. */
 coachRoutes.post('/compare', async (c) => {
   const input = await readJson(c, compareInput);
-  const scope = scopeOf(c);
-  const team = scope.member.team_id;
-  const recipes = await listRecipes(scope.db, team);
-  const a = recipes.find((r) => r.id === input.a);
-  const b = recipes.find((r) => r.id === input.b);
-  if (!a || !b) throw notFound('recipe');
-  const [avgA, avgB] = await Promise.all([recipeBrewAverages(scope.db, team, a.id), recipeBrewAverages(scope.db, team, b.id)]);
-  const ca = recipeForCoach(a, avgA);
-  const cb = recipeForCoach(b, avgB);
-  const differences = COMPARE_KEYS.filter((k) => comparable(ca[k]) !== comparable(cb[k])).map((k) => ({ setting: k, a: ca[k], b: cb[k] }));
-  const out = await askJson(scope, 'compare', compareOutput, COACH_SYSTEM, comparePrompt({ a: ca, b: cb, differences }));
-  return c.json<CompareRead>(out);
+  const ask = { refresh: input.refresh === true, seen: input.seen ?? null };
+  const res = await writeCompare(scopeOf(c), input.a, input.b, ask, (work) => c.executionCtx.waitUntil(work));
+  return c.json<CompareResponse>(res, res.pending ? 202 : 200);
+});
+
+/** The team's kept breakdown of a World champion recipe (null until someone asks). */
+coachRoutes.get('/champions/:id', async (c) => c.json<ChampionBreakdownResponse>(await championState(scopeOf(c), idParam(c, 'champion recipe'))));
+
+coachRoutes.post('/champions/:id', async (c) => {
+  const { refresh, seen } = await readJson(c, explainInput);
+  const ask = { refresh: refresh === true, seen: seen ?? null };
+  const res = await writeChampionBreakdown(scopeOf(c), idParam(c, 'champion recipe'), ask, (work) => c.executionCtx.waitUntil(work));
+  return c.json<ChampionBreakdownResponse>(res, res.pending ? 202 : 200);
 });
 
 /** Quick log: a typed or spoken note turned into brew-log fields for the barista to confirm. */

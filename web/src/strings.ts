@@ -1,5 +1,6 @@
 // Every string the UI shows lives here, so an Arabic version can be added later
 // by providing the same shape in another language.
+import type { CompareFraming } from '../../shared/types';
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -245,6 +246,7 @@ export const strings = {
     staleRecipe: 'The recipe was edited after this review.',
     notConfigured: 'Coach tips appear here once the owner adds the AI key.',
     offline: 'Coach tips need a connection.',
+    needsKey: 'The coach explains this once the owner adds the AI key.',
     start: 'Starting recipe',
     checks: 'Check before duelling it',
     nextTest: 'Next test',
@@ -578,6 +580,7 @@ export const strings = {
       },
       overallShort: (v: string) => `Overall ${v}`,
       plannedTime: 'Planned time',
+      whatChanged: (code: string) => `What changed from ${code}?`,
     },
     form: {
       newTitle: 'New recipe',
@@ -622,11 +625,37 @@ export const strings = {
       setting: 'Setting',
       differs: (n: number) => (n === 0 ? 'Same settings' : `${plural(n, 'setting differs', 'settings differ')}`),
       legend: 'Highlighted rows differ.',
-      coach: 'Coach',
-      coachButton: 'What do these differences do?',
-      coachHint: 'The coach explains what each difference likely does in the cup. One AI call from the monthly budget.',
-      coachLoading: 'The coach is comparing them…',
-      inADuel: 'In a duel',
+      ours: 'Our recipes',
+      champions: 'World champion recipes',
+      /** Column tags, first then second, for each kind of pair. */
+      roles: {
+        versions: ['Old', 'New'],
+        recipes: ['Older', 'Newer'],
+        champion_ours: ['Champion', 'Ours'],
+        champions: ['Earlier', 'Later'],
+      } as Record<CompareFraming, [string, string]>,
+      standing: 'Standing',
+      plannedTime: 'Planned time',
+      whatDiffers: 'What differs',
+      allSettings: 'All settings',
+      showAll: 'Show all settings',
+      showDiffering: 'Show only what differs',
+      coach: 'The coach explains',
+      explain: 'Explain the differences',
+      explainHint: 'In plain words, for each difference: why you’d do it, how it works, and what you’ll taste. One AI call, kept for the whole team.',
+      explaining: 'The coach is comparing them. This can take up to a minute.',
+      explainAgain: 'Explain again',
+      stale: 'One of the recipes was edited after this.',
+      why: 'Why',
+      how: 'How it works',
+      cup: 'In the cup',
+      verdict: {
+        versions: 'Is the new one better?',
+        recipes: 'Which would win?',
+        champion_ours: 'What we can borrow',
+        champions: 'What they share',
+      } as Record<CompareFraming, string>,
+      next: 'Try next',
     },
     lineage: {
       title: 'Lineage',
@@ -649,6 +678,17 @@ export const strings = {
     noRecipe: 'No recipe was published for this result.',
     add: 'Add to our recipes',
     addHint: 'Opens a new recipe with these settings. Pick your bean, check it, then save.',
+    /** A champion recipe's short code in comparisons, e.g. "WAC 2019 · 1st". */
+    code: (year: number, place: number) => `WAC ${year} · ${['', '1st', '2nd', '3rd'][place] ?? place}`,
+    compareWith: 'Compare with our recipes',
+    whyTitle: 'Why it works',
+    explain: 'Explain this recipe',
+    explainHint: 'In plain words: the idea behind it, why the champion likely chose each setting, and what we can take from it. One AI call, kept for the whole team.',
+    explaining: 'The coach is reading this recipe. This can take up to a minute.',
+    explainAgain: 'Explain again',
+    why: 'Why',
+    how: 'How it works',
+    lessons: 'What we can take from it',
     steps: 'Steps as published',
     notes: 'About',
     caveats: 'What the sources leave open',

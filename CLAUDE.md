@@ -41,7 +41,7 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   except plain-http local/private-network hosts (so LAN phone testing works in dev).
 - Schema additions beyond the brief: `teams.pin_hash/pin_salt`, `login_attempts.first_failed_at`,
   `duel_judges` table, `duels.rematch_of`, `teams.ai_coach_model/ai_quick_model/ai_auto_tips`,
-  `ai_tips` table.
+  `ai_tips` and `ai_reads` tables.
 - Hosting: the user stays on **Workers Free** (decided after checkpoint 1; they have the Cloudflare
   Pro *website* plan, which doesn't include Workers Paid). Free allows 10 ms of CPU per request.
   So PIN hashes use 20k PBKDF2 rounds (`PIN_HASH_ITERATIONS` in `worker/src/config.ts`), a
@@ -210,7 +210,15 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
     the row exactly as it was read (`claim IS ? AND tips_at IS ?`, or `INSERT OR IGNORE`).
     - The final write lands only while the claim holds, and a failure frees it.
     - Without `refresh`, a POST returns tips that already exist. A pending POST answers 202.
+    - With `refresh`, the phone sends `seen` (the `at` it shows). If newer tips exist, the server
+      returns those instead of calling again.
+    - `tips_at` is the claim time, not the answer time, so an edit made while the coach writes
+      marks the tips stale.
     - The work also goes to `waitUntil`, so a phone that closes mid-answer doesn't waste the call.
+  - The web sections are keyed by subject (`key={recipe.id}`). Otherwise Back to another recipe
+    would reuse a running mutation and write one recipe's tips onto another's page.
+  - Experiment cards in tips load the lists themselves (`TeamExperimentCard`, 60 s `staleTime`), so
+    a recipe or bean page doesn't re-read every recipe and bean.
   - Automatic tips are asked for by the phone, not written in `waitUntil` on create, because
     `waitUntil` only runs about 30 s past the response and a coach answer can take longer.
     - The server says `auto` when the subject is under a day old, has no tips and no claim, a key
@@ -221,12 +229,38 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   - Prompts send short team notes (`teamSnapshot`: competition facts and the top 8 recipes, with
     averages read through the recipe index) plus the subject in full (`recipeFocus`/`beanFocus`),
     not the whole context pack.
-  - `POST /api/coach/compare {a, b}`: the settings that differ, plus both recipes with records
-    and averages. The phone caches the answer per pair.
+  - Explained comparisons and champion breakdowns (`worker/src/ai/explain.ts`, `ai_reads`,
+    migration 0006) use the same claim and `seen` rules. The primary key is `(team_id, id)`.
+    - The id is `compare:<ref>|<ref>` (refs sorted, so either order shares one) or
+      `champion:<id>`.
+    - A side is a `CompareRef {kind: 'recipe'|'champion', id}`, written `recipe:<id>` or
+      `champion:<id>` in URLs.
+    - `GET/POST /api/coach/compare` (POST also takes a bare recipe id, as older phones send).
+    - `GET/POST /api/coach/champions/:id`.
+  - `shared/compare.ts` `orient()` decides the order and the framing. The screen and the Worker
+    share it, so the table and the explanation agree.
+    - A version comes after the recipe it came from (parent chain): framing `versions`.
+    - Otherwise the older recipe comes first: `recipes`.
+    - A champion comes before ours: `champion_ours`.
+    - The earlier champion comes first: `champions`.
+    - The saved read stores `first`, so its from/to line up even if the order rules change.
+  - The compare prompt gets the relation, both recipes in full (a champion's with its published
+    method, notes and caveats), the settings that differ, and the head-to-head duel record for two
+    team recipes.
+    - It asks for plain words: each term explained once, and "likely" for a champion's reasons.
+    - For each change it returns setting, from, to, why, how and cup, then a verdict and a next
+      step. The verdict's label depends on the framing.
+  - Screens:
+    - Compare (`/recipes/:id/compare`, `/recipes/champions/:id/compare`, `?with=<ref>`) puts the
+      coach's explanation first, then only the settings that differ, with "Show all settings".
+    - Its picker lists our recipes and the published champion recipes. The champion data is
+      loaded on demand (`web/src/champions.ts`).
+    - The recipe page has "What changed from <parent>?". The champion page has "Compare with our
+      recipes" and "Why it works".
   - `POST /api/coach/ask` takes `about: {kind, id}` (the Coach tab's `?about=recipe:<id>`), which
     adds that subject's focus block. The question box then comes first, prefilled.
-  - The new kinds `beanTips`, `recipeTips` and `compare` use the coach role at low effort. The
-    backup includes `ai_tips`, without the claim column.
+  - The kinds `beanTips`, `recipeTips`, `compare` and `championRead` use the coach role at low
+    effort. The backup includes `ai_tips` and `ai_reads`, without their claim columns.
 - Champion recipes (`shared/champions.ts`, screens under `/recipes/champions`): WAC podium recipes
   researched from the official WAC and aeropress.com pages plus coffee press (search summaries;
   pages couldn't be opened from here).

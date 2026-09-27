@@ -413,13 +413,77 @@ export interface TipsResponse<T> {
 export type BeanTipsResponse = TipsResponse<BeanTips>;
 export type RecipeTipsResponse = TipsResponse<RecipeTips>;
 
-/** What the differences between two recipes are likely to do in the cup. */
-export interface CompareRead {
-  read: string;
-  effects: { change: string; effect: string }[];
-  /** What to taste for when the two meet in a duel. */
-  duel: string;
+// ---------- Explained comparisons and champion breakdowns ----------
+
+export const COMPARE_KINDS = ['recipe', 'champion'] as const;
+export type CompareKind = (typeof COMPARE_KINDS)[number];
+
+/** One side of a comparison: one of the team's recipes, or a World champion's. */
+export interface CompareRef {
+  kind: CompareKind;
+  id: string;
 }
+
+/**
+ * How two recipes relate, which sets their order and how the coach explains them: a newer
+ * version against the one it came from, two separate team recipes (older first), a champion's
+ * against ours (the champion's first), or two champions' (the earlier first).
+ */
+export type CompareFraming = 'versions' | 'recipes' | 'champion_ours' | 'champions';
+
+export interface CompareChange {
+  /** The setting, in plain words. */
+  setting: string;
+  /** Its value in the first recipe, then in the second. */
+  from: string;
+  to: string;
+  /** Why you'd make this change (the goal). */
+  why: string;
+  /** Why it works, simply. */
+  how: string;
+  /** What you'd taste. */
+  cup: string;
+}
+
+export interface CompareRead {
+  /** The side the coach explained first ("recipe:<id>" or "champion:<id>"); `from` is its value. */
+  first: string;
+  summary: string;
+  changes: CompareChange[];
+  /** Is the new one better, which would win, or what to borrow (depends on the framing). */
+  verdict: string;
+  next: string;
+}
+
+export interface ChampionChoice {
+  setting: string;
+  value: string;
+  /** Why the champion likely chose it. */
+  why: string;
+  how: string;
+}
+
+/** A World champion recipe explained: the idea, each choice, and what the team can take from it. */
+export interface ChampionBreakdown {
+  summary: string;
+  choices: ChampionChoice[];
+  lessons: string[];
+}
+
+/** A coach explanation the team keeps (null until someone asks for it). */
+export interface SavedRead<T> {
+  read: T | null;
+  at: number | null;
+  /** Another phone is writing it now; ask again in a few seconds. */
+  pending: boolean;
+  /** One of the team's recipes in it was edited after it was written. */
+  stale: boolean;
+  /** An AI key is set up. */
+  configured: boolean;
+}
+
+export type CompareResponse = SavedRead<CompareRead>;
+export type ChampionBreakdownResponse = SavedRead<ChampionBreakdown>;
 
 export interface QuickLogMatch {
   id: string | null;
@@ -567,6 +631,7 @@ export const EXPORT_PARTS = [
   'duel_votes',
   'readiness_reports',
   'ai_tips',
+  'ai_reads',
   'ai_calls',
 ] as const;
 export type ExportPart = (typeof EXPORT_PARTS)[number];

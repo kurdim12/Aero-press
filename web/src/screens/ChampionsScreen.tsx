@@ -2,6 +2,9 @@ import { Fragment } from 'react';
 import { Link } from 'wouter';
 import { CHAMPION_RECIPES, type ChampionRecipe, type ChampionSetup } from '../../../shared/champions';
 import { WINDOW_S, planBrew } from '../../../shared/phases';
+import type { ChampionBreakdown, ChampionBreakdownResponse } from '../../../shared/types';
+import { api } from '../api';
+import { SavedReadSection, useSavedRead } from '../components/SavedRead';
 import { TopBar } from '../components/TopBar';
 import { stashRecipeDraft } from '../drafts';
 import { formatRatio, formatSeconds, formatTemp } from '../format';
@@ -135,6 +138,9 @@ export function ChampionScreen({ id }: { id: string }) {
               {c.add}
             </Link>
             <p className="field-hint">{c.addHint}</p>
+            <Link href={`/recipes/champions/${entry.id}/compare`} className="btn secondary block">
+              {c.compareWith}
+            </Link>
           </div>
         ) : (
           <p className="notice">{c.noRecipe}</p>
@@ -176,6 +182,7 @@ export function ChampionScreen({ id }: { id: string }) {
             <p className="prose">{r.other_steps}</p>
           </section>
         )}
+        {r && <WhyItWorks key={entry.id} id={entry.id} />}
         {entry.notes && (
           <section className="section">
             <span className="eyebrow">{c.notes}</span>
@@ -202,6 +209,51 @@ export function ChampionScreen({ id }: { id: string }) {
         </section>
       </main>
     </>
+  );
+}
+
+/** The coach explains the recipe simply: the idea, each choice, and what we can take from it. */
+function WhyItWorks({ id }: { id: string }) {
+  const path = `/api/coach/champions/${encodeURIComponent(id)}`;
+  const saved = useSavedRead<ChampionBreakdown>(['champion-read', id], path, (refresh, seen) =>
+    api<ChampionBreakdownResponse>('POST', path, { refresh, seen }),
+  );
+  return (
+    <SavedReadSection
+      saved={saved}
+      labels={{ title: c.whyTitle, button: c.explain, hint: c.explainHint, loading: c.explaining, again: c.explainAgain, stale: '' }}
+      render={(read) => (
+        <>
+          <div className="coach-card">
+            <p className="coach-read">{read.summary}</p>
+          </div>
+          <ol className="explain-list">
+            {read.choices.map((choice, i) => (
+              <li key={i} className="explain-item">
+                <h3 className="explain-title">
+                  {choice.setting}
+                  {choice.value && <span className="explain-value"> · {choice.value}</span>}
+                </h3>
+                <p>
+                  <strong>{c.why}: </strong>
+                  {choice.why}
+                </p>
+                <p>
+                  <strong>{c.how}: </strong>
+                  {choice.how}
+                </p>
+              </li>
+            ))}
+          </ol>
+          <h3 className="subhead">{c.lessons}</h3>
+          <ul className="fixes">
+            {read.lessons.map((lesson, i) => (
+              <li key={i}>{lesson}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    />
   );
 }
 

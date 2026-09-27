@@ -1936,6 +1936,54 @@ dl.kv-list.section {
   font-weight: 700;
 }
 
+.explain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.explain-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  line-height: 1.45;
+}
+
+.explain-item > p {
+  margin: 0;
+}
+
+.explain-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.explain-value {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.explain-values {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-role {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 .tips-loading {
   padding: 14px 16px;
   border: 1px dashed var(--line);

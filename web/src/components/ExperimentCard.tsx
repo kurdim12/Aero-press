@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { BeanRow, Experiment, RecipeFields, RecipeRow } from '../../../shared/types';
 import { experimentHref } from '../ai';
+import { beansQuery, recipesQuery } from '../queries';
 import { COLUMN_LABELS, formatColumn } from '../recipeFields';
 import { strings } from '../strings';
 
@@ -51,4 +53,14 @@ export function ExperimentCard({
       </Link>
     </article>
   );
+}
+
+/** Lists a minute old are fine for naming a parent and a bean (they're loaded at sign-in). */
+const LISTS_STALE_MS = 60_000;
+
+/** An experiment card that reads the team's lists itself, only when there is a card to show. */
+export function TeamExperimentCard({ experiment, action }: { experiment: Experiment; action?: string }) {
+  const recipes = useQuery({ ...recipesQuery('all', null), staleTime: LISTS_STALE_MS }).data?.recipes ?? [];
+  const beans = useQuery({ ...beansQuery, staleTime: LISTS_STALE_MS }).data?.beans ?? [];
+  return <ExperimentCard experiment={experiment} recipes={recipes} beans={beans} action={action} />;
 }

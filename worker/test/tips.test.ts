@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { BeanTipsResponse, CompareRead, ExportPage, RecipeRow, RecipeTipsResponse, TeamSettings } from '../../shared/types';
+import type { BeanTipsResponse, ExportPage, RecipeRow, RecipeTipsResponse, TeamSettings } from '../../shared/types';
 import { aiTransport } from '../src/ai/client';
 import { freshDb, recipeBody, setupTeam } from './helpers';
 
@@ -154,6 +154,31 @@ describe('coach tips on a recipe', () => {
     expect((await tipsRow(key))?.claim).toBeNull();
   });
 
+  it('dates tips from when the coach started, and a second "Update tips" gets the newer ones free', async () => {
+    const { owner, r1 } = await team();
+    const path = `/api/recipes/${r1.id}/tips`;
+    // Someone saves the recipe while the coach is still writing: the tips are then out of date.
+    replies.push(async (body) => {
+      await env.DB.prepare('UPDATE recipes SET updated_at = ? WHERE id = ?').bind(Date.now() + 5, r1.id).run();
+      return json(recipeTips(r1.display_code))(body);
+    });
+    const first = await owner.post<RecipeTipsResponse>(path, {});
+    expect(first.body.tips).not.toBeNull();
+    expect((await owner.get<RecipeTipsResponse>(path)).body.stale).toBe(true);
+
+    // Phone A updates them; phone B, still showing the first tips, taps "Update tips" too.
+    const shown = first.body.at;
+    await env.DB.prepare('UPDATE ai_tips SET tips_at = tips_at - 1000').run();
+    const older = (await owner.get<RecipeTipsResponse>(path)).body.at;
+    replies.push(json({ ...recipeTips(r1.display_code), verdict: 'Updated by A.' }));
+    const a = await owner.post<RecipeTipsResponse>(path, { refresh: true, seen: older });
+    expect(a.body.tips?.verdict).toBe('Updated by A.');
+    const b = await owner.post<RecipeTipsResponse>(path, { refresh: true, seen: older });
+    expect(b.body.tips?.verdict).toBe('Updated by A.');
+    expect(requests).toHaveLength(2);
+    expect(shown).toBeTypeOf('number');
+  });
+
   it('frees the claim when the call fails, so the next tap can try again', async () => {
     const { owner, r1 } = await team();
     const path = `/api/recipes/${r1.id}/tips`;
@@ -244,29 +269,7 @@ describe('coach tips on a coffee', () => {
   });
 });
 
-describe('compare and ask about', () => {
-  it('explains what two recipes’ differences do, from the settings that differ', async () => {
-    const { owner, r1, r2 } = await team();
-    replies.push(
-      json({
-        read: 'The cooler one should be sweeter and softer.',
-        effects: [{ change: 'Temperature 90 → 86 °C', effect: 'Less bitterness, softer acidity.' }],
-        duel: 'Taste both at 50 °C for sweetness.',
-      }),
-    );
-    const res = await owner.post<CompareRead>('/api/coach/compare', { a: r1.id, b: r2.id });
-    expect(res.status).toBe(200);
-    expect(res.body.effects).toHaveLength(1);
-    const sent = JSON.stringify(requests[0]?.messages);
-    expect(sent).toContain('\\"setting\\":\\"temp_c\\",\\"a\\":90,\\"b\\":86');
-    expect(sent).toContain('grind_setting');
-    expect(sent).not.toContain('\\"setting\\":\\"dose_g\\"');
-    expect((await aiCalls()).results).toEqual([{ kind: 'compare' }]);
-
-    expect((await owner.post('/api/coach/compare', { a: r1.id, b: r1.id })).body.error.field).toBe('b');
-    expect((await owner.post('/api/coach/compare', { a: r1.id, b: 'missing' })).status).toBe(404);
-  });
-
+describe('ask about', () => {
   it('adds the bean or recipe a question is about', async () => {
     const { owner, bean, r1 } = await team();
     const ask = async (about: unknown) => {

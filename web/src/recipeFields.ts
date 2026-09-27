@@ -5,10 +5,13 @@ import { strings } from './strings';
 
 const f = strings.recipes.fields;
 
+/** What the display needs: the recipe's settings and its bean's name (a champion's has none). */
+export type DisplayRecipe = RecipeFields & Pick<RecipeRow, 'bean_name'>;
+
 export interface DisplayField {
   key: string;
   label: string;
-  show: (r: RecipeRow) => string;
+  show: (r: DisplayRecipe) => string;
 }
 
 const text = (v: string | null) => v ?? '';

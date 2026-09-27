@@ -80,6 +80,15 @@ function Shell({ me }: { me: MeResponse }) {
               <ChampionsScreen />
             </Suspense>
           </Route>
+          <Route path="/recipes/champions/:id/compare">
+            {(p) => (
+              <CompareScreen
+                a={{ kind: 'champion', id: p.id }}
+                base={`/recipes/champions/${p.id}/compare`}
+                backHref={`/recipes/champions/${p.id}`}
+              />
+            )}
+          </Route>
           <Route path="/recipes/champions/:id">
             {(p) => (
               <Suspense fallback={<Splash />}>
@@ -91,7 +100,9 @@ function Shell({ me }: { me: MeResponse }) {
             <RecipeFormScreen />
           </Route>
           <Route path="/recipes/:id/edit">{(p) => <RecipeFormScreen editId={p.id} />}</Route>
-          <Route path="/recipes/:id/compare">{(p) => <CompareScreen id={p.id} />}</Route>
+          <Route path="/recipes/:id/compare">
+            {(p) => <CompareScreen a={{ kind: 'recipe', id: p.id }} base={`/recipes/${p.id}/compare`} backHref={`/recipes/${p.id}`} />}
+          </Route>
           <Route path="/recipes/:id/lineage">{(p) => <LineageScreen id={p.id} />}</Route>
           <Route path="/recipes/:id">{(p) => <RecipeDetailScreen id={p.id} />}</Route>
           <Route path="/brew" component={BrewScreen} />

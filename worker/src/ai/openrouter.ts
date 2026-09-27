@@ -40,6 +40,7 @@ const EFFORT: Record<AiKind, 'low' | 'medium'> = {
   beanTips: 'low',
   recipeTips: 'low',
   compare: 'low',
+  championRead: 'low',
   quickLog: 'low',
   brewRead: 'low',
 };

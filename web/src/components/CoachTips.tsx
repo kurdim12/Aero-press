@@ -5,9 +5,8 @@ import type { BeanTips, RecipeTips, TipsResponse, TipsSubject } from '../../../s
 import { api, errorMessage } from '../api';
 import { formatDate } from '../format';
 import { useOnline } from '../offline/useOnline';
-import { beansQuery, recipesQuery } from '../queries';
 import { strings } from '../strings';
-import { ExperimentCard } from './ExperimentCard';
+import { TeamExperimentCard } from './ExperimentCard';
 import { FormError } from './Fields';
 
 const t = strings.tips;
@@ -34,7 +33,8 @@ function useTips<T>(subject: TipsSubject, id: string) {
     enabled: online,
   });
   const write = useMutation({
-    mutationFn: (refresh: boolean) => api<TipsResponse<T>>('POST', tipsPath(subject, id), { refresh }),
+    // `seen`: the tips this phone shows, so "Update tips" returns newer ones someone else just wrote.
+    mutationFn: (refresh: boolean) => api<TipsResponse<T>>('POST', tipsPath(subject, id), { refresh, seen: state.data?.at ?? null }),
     onSuccess: (res) => {
       qc.setQueryData(queryKey, res);
       void qc.invalidateQueries({ queryKey: ['ai-usage'] });
@@ -118,8 +118,6 @@ function TipsSection<T>({ subject, id, labels, render }: { subject: TipsSubject;
 
 /** The coach's review of a recipe: verdict, tips, checks, and a next test to clone. */
 export function RecipeCoachTips({ recipeId }: { recipeId: string }) {
-  const recipes = useQuery(recipesQuery('all', null)).data?.recipes ?? [];
-  const beans = useQuery(beansQuery).data?.beans ?? [];
   return (
     <TipsSection<RecipeTips>
       subject="recipe"
@@ -151,7 +149,7 @@ export function RecipeCoachTips({ recipeId }: { recipeId: string }) {
           {tips.next_test && (
             <>
               <h3 className="subhead">{t.nextTest}</h3>
-              <ExperimentCard experiment={tips.next_test} recipes={recipes} beans={beans} action={strings.coach.createThis} />
+              <TeamExperimentCard experiment={tips.next_test} action={strings.coach.createThis} />
             </>
           )}
         </>
@@ -162,8 +160,6 @@ export function RecipeCoachTips({ recipeId }: { recipeId: string }) {
 
 /** The coach's first look at a coffee: what to expect, tips, and a starting recipe. */
 export function BeanCoachTips({ beanId }: { beanId: string }) {
-  const recipes = useQuery(recipesQuery('all', null)).data?.recipes ?? [];
-  const beans = useQuery(beansQuery).data?.beans ?? [];
   return (
     <TipsSection<BeanTips>
       subject="bean"
@@ -184,7 +180,7 @@ export function BeanCoachTips({ beanId }: { beanId: string }) {
           {tips.start && (
             <>
               <h3 className="subhead">{t.start}</h3>
-              <ExperimentCard experiment={tips.start} recipes={recipes} beans={beans} />
+              <TeamExperimentCard experiment={tips.start} />
             </>
           )}
         </>

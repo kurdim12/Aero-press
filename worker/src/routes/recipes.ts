@@ -145,7 +145,7 @@ recipeRoutes.put('/:id/lock', requireOwner, async (c) => {
 recipeRoutes.get('/:id/tips', async (c) => c.json<RecipeTipsResponse>(await getTips(aiScope(c), 'recipe', idParam(c, 'recipe'))));
 
 recipeRoutes.post('/:id/tips', async (c) => {
-  const { refresh } = await readJson(c, tipsInput);
-  const res = await writeTips(aiScope(c), 'recipe', idParam(c, 'recipe'), refresh === true, (work) => c.executionCtx.waitUntil(work));
+  const { refresh, seen } = await readJson(c, tipsInput);
+  const res = await writeTips(aiScope(c), 'recipe', idParam(c, 'recipe'), refresh === true, seen ?? null, (work) => c.executionCtx.waitUntil(work));
   return c.json<RecipeTipsResponse>(res, res.pending ? 202 : 200);
 });

@@ -52,7 +52,7 @@ export function RecipeDetailScreen({ id }: { id: string }) {
         )}
         <Hero recipe={recipe} />
         <Actions recipe={recipe} />
-        <RecipeCoachTips recipeId={recipe.id} />
+        <RecipeCoachTips key={recipe.id} recipeId={recipe.id} />
         <section className="section">
           <span className="eyebrow">{d.setup}</span>
           <dl className="kv-list">
@@ -129,6 +129,11 @@ function Actions({ recipe: r }: { recipe: RecipeRow }) {
           </Link>
         )}
       </div>
+      {r.parent_id && r.parent_display_code && (
+        <Link href={`/recipes/${r.id}/compare?with=${encodeURIComponent(`recipe:${r.parent_id}`)}`} className="btn secondary block">
+          {d.whatChanged(r.parent_display_code)}
+        </Link>
+      )}
       {isOwner && (
         <button type="button" className="btn secondary block" onClick={() => lock.mutate(!r.locked)} disabled={lock.isPending}>
           {r.locked ? d.unlock : d.lock}

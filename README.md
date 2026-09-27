@@ -62,7 +62,15 @@ Coach tab:
   it, and one next test.
 - **Update tips** writes new ones, for example after an edit. **Ask the coach** opens the Coach
   tab with a question about that coffee or recipe.
-- **Recipes › Compare:** **What do these differences do?** explains the settings that differ.
+- **Comparisons explained simply:** on a newer version of a recipe, tap **What changed from …?**,
+  or use **Compare** on any recipe. For each difference, the coach says why you'd do it, how it
+  works and what you'll taste, then whether the new one is likely better. You can compare with the
+  World champion recipes too, or two champions with each other.
+- **World champion recipes:** **Explain this recipe** breaks down why the champion likely chose
+  each setting and what the team can take from it. **Compare with our recipes** puts it next to
+  yours.
+- Explanations are kept for the whole team, so the next person sees them without another call.
+  **Explain again** writes a new one, for example after a recipe changes.
 - **After each brew and each duel:** a short read of the result. **Brew › Quick log** fills in the
   brew form from a sentence.
 - **Coach tab:** today's duels, a session plan, adapting a recipe to a new coffee, a readiness

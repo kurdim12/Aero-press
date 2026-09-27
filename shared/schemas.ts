@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { OPENROUTER_MODEL_IDS } from './aiModels';
 import { BREW_LIMITS } from './limits';
-import { DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS, TIPS_SUBJECTS } from './types';
+import { COMPARE_KINDS, DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS, TIPS_SUBJECTS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
 
@@ -375,13 +375,36 @@ export type AskInput = z.input<typeof askInput>;
 /** Write the coach's tips on a bean or recipe. Without `refresh`, tips already written are kept. */
 export const tipsInput = z.object({
   refresh: z.boolean().optional(),
+  /** When the one this phone shows was written: a newer one is returned instead of paying again. */
+  seen: z.number().int().min(0).nullable().optional(),
 });
 export type TipsInput = z.input<typeof tipsInput>;
 
+/** One side of a comparison. A plain id is a team recipe (what older versions of the app send). */
+const compareRef = z.union([
+  z.object({ kind: z.enum(COMPARE_KINDS), id }),
+  id.transform((value) => ({ kind: 'recipe' as const, id: value })),
+]);
+
+/** Explain two recipes' differences. Without `refresh`, an explanation already kept is returned. */
 export const compareInput = z
-  .object({ a: id, b: id })
-  .refine((v) => v.a !== v.b, { message: 'Pick two different recipes.', path: ['b'] });
+  .object({ a: compareRef, b: compareRef, refresh: z.boolean().optional(), seen: z.number().int().min(0).nullable().optional() })
+  .refine((v) => v.a.kind !== v.b.kind || v.a.id !== v.b.id, { message: 'Pick two different recipes.', path: ['b'] });
 export type CompareInput = z.input<typeof compareInput>;
+
+/** GET /api/coach/compare?a=&b=: each side as "recipe:<id>" or "champion:<id>". */
+export const compareQuery = z.object({
+  a: z.string().min(1).max(120),
+  b: z.string().min(1).max(120),
+});
+
+/** Break down a champion recipe. Without `refresh`, a breakdown already kept is returned. */
+export const explainInput = z.object({
+  refresh: z.boolean().optional(),
+  /** When the one this phone shows was written: a newer one is returned instead of paying again. */
+  seen: z.number().int().min(0).nullable().optional(),
+});
+export type ExplainInput = z.input<typeof explainInput>;
 
 export const quickLogInput = z.object({
   text: z.string({ error: 'Type or say the brew first.' }).trim().min(1, 'Type or say the brew first.').max(1000, 'Keep it under 1000 characters.'),
@@ -474,10 +497,29 @@ export const recipeTipsOutput = z.object({
   next_test: experimentOutput.nullable(),
 });
 
+/** A setting's value as the coach quotes it ("92 °C", "none"); never worth a retry. */
+const aiValue = z
+  .preprocess(textual, z.string().trim())
+  .catch('')
+  .transform((v) => v.slice(0, 200));
+
 export const compareOutput = z.object({
-  read: aiText(1500),
-  effects: upTo(z.object({ change: aiText(200), effect: aiText(600) }), 6),
-  duel: aiText(600),
+  summary: aiText(1200),
+  changes: upTo(
+    z.object({ setting: aiText(100), from: aiValue, to: aiValue, why: aiText(700), how: aiText(700), cup: aiText(500) }),
+    8,
+  ),
+  verdict: aiText(900),
+  next: aiText(700),
+});
+
+export const championBreakdownOutput = z.object({
+  summary: aiText(1200),
+  choices: upTo(z.object({ setting: aiText(100), value: aiValue, why: aiText(700), how: aiText(700) }), 8).refine(
+    (choices) => choices.length > 0,
+    'List the settings that matter.',
+  ),
+  lessons: upTo(aiText(500), 4).refine((lessons) => lessons.length > 0, 'Give 2 to 4 lessons.'),
 });
 
 // A quick log never fails on one odd field: anything unreadable becomes null ("leave it empty").

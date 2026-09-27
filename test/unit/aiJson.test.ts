@@ -196,9 +196,11 @@ describe('tips and compare replies', () => {
     const tip = { title: 'Finer', detail: 'One click.' };
     const recipe = parseAiJson(recipeTipsOutput, JSON.stringify({ verdict: 'Good.', tips: [tip, tip, tip, tip, tip], checks: ['1', '2', '3', '4'], next_test: null }));
     expect(recipe.ok && [recipe.data.tips.length, recipe.data.checks.length]).toEqual([4, 3]);
-    const effects = Array.from({ length: 8 }, (_, i) => ({ change: `c${i}`, effect: 'e' }));
-    const compare = parseAiJson(compareOutput, JSON.stringify({ read: 'Close.', effects, duel: 'Taste.' }));
-    expect(compare.ok && compare.data.effects.length).toBe(6);
+    const changes = Array.from({ length: 10 }, (_, i) => ({ setting: `s${i}`, from: 90, to: '86 °C', why: 'w', how: 'h', cup: 'c' }));
+    const compare = parseAiJson(compareOutput, JSON.stringify({ summary: 'Close.', changes, verdict: 'Duel them.', next: 'Taste.' }));
+    expect(compare.ok && compare.data.changes.length).toBe(8);
+    // Values come back as text, whatever the model wrote them as.
+    expect(compare.ok && compare.data.changes[0]).toMatchObject({ from: '90', to: '86 °C' });
     // No tips at all is still wrong, and says so.
     expect(parseAiJson(beanTipsOutput, JSON.stringify({ summary: 'x', tips: [], start: null }))).toMatchObject({ ok: false, error: 'tips: Give 2 to 4 tips.' });
   });

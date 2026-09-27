@@ -1,5 +1,6 @@
 // The AI prompts. The coach system prompt and output formats follow the brief (section 6).
 import { RECIPE_CHANGE_KEYS } from '../../../shared/schemas';
+import type { CompareFraming } from '../../../shared/types';
 
 export const COACH_SYSTEM = `You are a World AeroPress Championship coach helping a competitor and their café team in Jordan prepare for the national championship.
 Format facts: each competitor has 5 minutes to brew one cup; judges taste blind and point simultaneously at the better cup; one advances per heat. The competition coffee is usually supplied by the organizer, so recipes must hold up across beans and the competitor must know which variables to adjust for a new coffee.
@@ -17,7 +18,7 @@ const EXPERIMENT_SHAPE = `{
   "listenFor": "what to taste for when duelling it against the parent"
 }`;
 
-const CHANGE_RULES = `The allowed keys in "changes" are the recipe columns only: ${RECIPE_CHANGE_KEYS.join(', ')}. Give only the settings that change versus the parent, with numbers as numbers. Use recipe codes exactly as they appear in the data.`;
+const CHANGE_RULES = `The allowed keys in "changes" are the recipe columns only: ${RECIPE_CHANGE_KEYS.join(', ')}. Give only the settings that change versus the parent, with numbers as numbers; "method" is "Inverted" or "Standard". Use recipe codes exactly as they appear in the data.`;
 
 const EXPERIMENTS_FORMAT = `Return ONLY valid JSON, no text before or after:
 {
@@ -112,8 +113,31 @@ Return ONLY valid JSON, no text before or after:
 2 to 4 tips, most useful first. At most 3 checks, only for real problems (over 5:00, an unusual ratio, a missing step or setting), or an empty list. "next_test" is one experiment with "parent": "${code}", or null if nothing is worth testing yet. ${CHANGE_RULES}`;
 }
 
-export function comparePrompt(pair: unknown): string {
-  return `Two of the team's recipes are below, with every setting that differs between them. What are those differences likely to do in the cup, and what should the judges taste for if the two meet in a blind duel? Use their records and brew averages where they exist.
+/** How every explanation is written: the team asked for it very simple. */
+const PLAIN = `Write for a barista, not a scientist: short sentences and everyday words. The first time you use a coffee term, explain it in a few words (for example "extraction: how much flavour the water pulls out of the coffee"). Use the real numbers from the recipes. Keep each field to one or two sentences.`;
+
+const CHAMPION_HONESTY = `Champions rarely publish their reasons, so say "likely" unless the data quotes them. They chose everything for one coffee and one water (in their notes, when known).`;
+
+const COMPARE_INTRO: Record<CompareFraming, string> = {
+  versions:
+    'The second recipe is a newer version of the first: it was made from it. Explain what changed and why. For each change, say why a barista would make it (if the newer recipe\'s notes give the reason, use it and say so), why it works, and what it does to the cup.',
+  recipes:
+    'These are two separate recipes from the team; the first is the older one. Explain each difference: why a barista would choose it, why it works, and what it does to the cup.',
+  champion_ours:
+    "The first is a World AeroPress Championship podium recipe; the second is the team's own. Explain each difference: why the champion likely chose their setting, why it works, and what the team's choice does instead.",
+  champions:
+    'Both are World AeroPress Championship podium recipes; the first is the earlier one. Explain each difference: why each champion likely chose their setting (think of their coffee and water), why it works, and what it does to the cup.',
+};
+
+const VERDICT: Record<CompareFraming, string> = {
+  versions: 'is the new version likely better, and why? Use their duel record if they met; if the data can\'t tell, say how to find out',
+  recipes: 'which one is likelier to win a blind duel, and why? Use their duel record if they met; if the data can\'t tell, say how to find out',
+  champion_ours: "what the team's recipe could borrow from the champion's, and where it may already be stronger",
+  champions: 'what the two champions have in common, and which kind of coffee suits each approach',
+};
+
+export function comparePrompt(framing: CompareFraming, pair: unknown): string {
+  return `${COMPARE_INTRO[framing]}
 
 <recipes>
 ${JSON.stringify(pair)}
@@ -121,13 +145,38 @@ ${JSON.stringify(pair)}
 
 ${PLAN_NOTES}
 
+${PLAIN}${framing === 'champion_ours' || framing === 'champions' ? ` ${CHAMPION_HONESTY}` : ''}
+
 Return ONLY valid JSON, no text before or after:
 {
-  "read": "2 to 4 sentences: the cup each recipe will likely make, which is likelier to win blind, and how sure the data lets you be",
-  "effects": [ { "change": "the difference, with both values", "effect": "what it likely does to the cup" } ],
-  "duel": "one or two sentences: what to taste for when they meet"
+  "summary": "2 or 3 short sentences: the big picture of how the two cups differ",
+  "changes": [
+    { "setting": "the setting in plain words", "from": "its value in the first recipe", "to": "its value in the second recipe", "why": "why you would do this: the goal", "how": "why it works, in simple words", "cup": "what you would taste" }
+  ],
+  "verdict": "${VERDICT[framing]}",
+  "next": "one simple next step for the team"
 }
-One entry in "effects" per difference that matters, at most 6, biggest effect first. Write "change" in plain words for a barista (e.g. "Grind 20 vs 22 clicks"), not the setting's key. Use the recipe codes exactly as they appear.`;
+One entry in "changes" per difference that matters, at most 8, biggest effect first; leave out differences that don't change the cup (like a grinder's name when the grind is the same). Use the recipe codes exactly as they appear.`;
+}
+
+export function championPrompt(champion: unknown): string {
+  return `Break down the World AeroPress Championship recipe below for the team: the idea behind it, why the champion likely chose each setting and how it works, and what the team can take from it for their own recipes (their competition and best recipes are in the team notes).
+
+<champion>
+${JSON.stringify(champion)}
+</champion>
+
+${PLAN_NOTES}
+
+${PLAIN} ${CHAMPION_HONESTY}
+
+Return ONLY valid JSON, no text before or after:
+{
+  "summary": "2 or 3 short sentences: the idea behind this recipe",
+  "choices": [ { "setting": "the setting in plain words", "value": "its value in this recipe", "why": "why the champion likely chose it", "how": "how it works, in simple words" } ],
+  "lessons": ["2 to 4 things the team can try or take from it"]
+}
+One entry in "choices" per setting that matters, at most 8, most important first.`;
 }
 
 /** "Ask the coach about this": the bean or recipe the question is about. */

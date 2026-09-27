@@ -134,7 +134,7 @@ beanRoutes.put('/:id', async (c) => {
 beanRoutes.get('/:id/tips', async (c) => c.json<BeanTipsResponse>(await getTips(aiScope(c), 'bean', idParam(c, 'bean'))));
 
 beanRoutes.post('/:id/tips', async (c) => {
-  const { refresh } = await readJson(c, tipsInput);
-  const res = await writeTips(aiScope(c), 'bean', idParam(c, 'bean'), refresh === true, (work) => c.executionCtx.waitUntil(work));
+  const { refresh, seen } = await readJson(c, tipsInput);
+  const res = await writeTips(aiScope(c), 'bean', idParam(c, 'bean'), refresh === true, seen ?? null, (work) => c.executionCtx.waitUntil(work));
   return c.json<BeanTipsResponse>(res, res.pending ? 202 : 200);
 });

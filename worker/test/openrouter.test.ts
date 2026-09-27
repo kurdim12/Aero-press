@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AiUsage, CompareRead, ExperimentsResponse, QuickLogResponse, RecipeRow, RecipeTipsResponse, TeamSettings } from '../../shared/types';
+import type { AiUsage, CompareResponse, ExperimentsResponse, QuickLogResponse, RecipeRow, RecipeTipsResponse, TeamSettings } from '../../shared/types';
 import { aiTransport } from '../src/ai/client';
 import { OPENROUTER_URL } from '../src/ai/openrouter';
 import { freshDb, recipeBody, setupTeam } from './helpers';
@@ -211,10 +211,10 @@ describe('OpenRouter', () => {
     expect(tips.body.tips).toMatchObject({ verdict: 'Sweet and clean.', checks: [], next_test: null });
     expect(calls[0]!.body).toMatchObject({ model: 'deepseek/deepseek-v4-pro-0813', max_tokens: 3000, reasoning: { effort: 'low', exclude: true } });
 
-    replies.push(reply(JSON.stringify({ read: 'The cooler one is softer.', effects: [], duel: 'Taste them cool.' })));
-    const compare = await owner.post<CompareRead>('/api/coach/compare', { a: r1.id, b: r2.id });
-    expect(compare.body.duel).toBe('Taste them cool.');
-    expect(calls[1]!.body).toMatchObject({ model: 'deepseek/deepseek-v4-pro-0813', max_tokens: 2500, reasoning: { effort: 'low' } });
+    replies.push(reply(JSON.stringify({ summary: 'The cooler one is softer.', changes: [], verdict: 'Too close to call.', next: 'Duel them.' })));
+    const compare = await owner.post<CompareResponse>('/api/coach/compare', { a: r1.id, b: r2.id });
+    expect(compare.body.read?.verdict).toBe('Too close to call.');
+    expect(calls[1]!.body).toMatchObject({ model: 'deepseek/deepseek-v4-pro-0813', max_tokens: 4000, reasoning: { effort: 'low' } });
     const kinds = (await spendRows()).results.map((r) => [r.kind, r.model, r.cost_usd]);
     expect(kinds).toEqual([
       ['recipeTips', 'deepseek/deepseek-v4-pro-0813', 0.0049],
