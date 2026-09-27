@@ -1,6 +1,11 @@
-// AI models and prices in one place, so they change without touching any logic.
+// AI models and prices in one place, so they change without touching any logic. The OpenRouter
+// models the owner can pick from (and their prices) are in shared/aiModels.ts.
+import { ANTHROPIC_MODELS, type ModelRole, OPENROUTER_MODELS } from '../../../shared/aiModels';
 
-/** Which model does what. Coach work uses Sonnet; quick parsing and one-liners use Haiku. */
+/**
+ * Which model does what on an Anthropic key: coach work uses Sonnet; quick parsing and one-liners
+ * use Haiku. On OpenRouter the owner picks a model per role in Settings.
+ */
 export const MODELS = {
   plan: 'claude-sonnet-5',
   adapt: 'claude-sonnet-5',
@@ -14,13 +19,27 @@ export const MODELS = {
 
 export type AiKind = keyof typeof MODELS;
 
-/** US dollars per million tokens (Anthropic API list prices). */
-export const PRICES: Record<string, { input: number; output: number }> = {
-  'claude-sonnet-5': { input: 2, output: 10 },
-  'claude-haiku-4-5-20251001': { input: 1, output: 5 },
+/** Which role's model each job uses. */
+export const KIND_ROLE: Record<AiKind, ModelRole> = {
+  plan: 'coach',
+  adapt: 'coach',
+  today: 'coach',
+  readiness: 'coach',
+  ask: 'coach',
+  duelRead: 'coach',
+  quickLog: 'quick',
+  brewRead: 'quick',
 };
 
-/** Output ceilings per call: generous enough never to cut a JSON answer short. */
+/** US dollars per million tokens (list prices), for every model the app can call. */
+export const PRICES: Record<string, { input: number; output: number }> = Object.fromEntries(
+  [...ANTHROPIC_MODELS, ...OPENROUTER_MODELS].map((m) => [m.id, { input: m.input, output: m.output }]),
+);
+
+/**
+ * Output ceilings per call, thinking included: generous enough never to cut a JSON answer short.
+ * Only what a call actually uses is billed.
+ */
 export const MAX_TOKENS: Record<AiKind, number> = {
   plan: 8000,
   adapt: 8000,
@@ -28,8 +47,8 @@ export const MAX_TOKENS: Record<AiKind, number> = {
   readiness: 6000,
   ask: 8000,
   duelRead: 3000,
-  quickLog: 1500,
-  brewRead: 400,
+  quickLog: 3000,
+  brewRead: 1500,
 };
 
 /**

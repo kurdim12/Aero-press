@@ -1,3 +1,4 @@
+import type { AiProvider } from './aiModels';
 // API shapes shared by the Worker and the web app.
 // Entity fields use the D1 column names (snake_case) end to end.
 
@@ -395,8 +396,12 @@ export interface QuickLogResponse {
 }
 
 export interface AiUsage {
-  /** False until the owner adds the Anthropic API key. */
+  /** False until the owner adds an OpenRouter or Anthropic API key. */
   configured: boolean;
+  /** Which service answers (OpenRouter when its key is set). */
+  provider: AiProvider | null;
+  /** The model ids in use for coaching and for quick parsing. */
+  models: { coach: string; quick: string } | null;
   month_spend_usd: number;
   cap_usd: number;
   calls: number;
@@ -493,6 +498,9 @@ export interface TeamSettings {
   champ_date: string | null;
   comp_coffee_notes: string | null;
   ai_monthly_budget_usd: number;
+  /** OpenRouter model picks per role (null = the default). Unused on an Anthropic key. */
+  ai_coach_model: string | null;
+  ai_quick_model: string | null;
 }
 
 /** Backup parts, one table each, so no single request builds the whole file. */

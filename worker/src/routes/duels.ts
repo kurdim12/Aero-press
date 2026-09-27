@@ -3,7 +3,7 @@ import type { AppEnv, AuthMember } from '../env';
 import type { DuelReadResponse, DuelView, DuelsResponse } from '../../../shared/types';
 import { duelInput, duelVoteInput } from '../../../shared/schemas';
 import { requireMember } from '../middleware/auth';
-import { aiKey } from '../ai/client';
+import { aiSetup } from '../ai/client';
 import { writeDuelRead } from '../ai/reads';
 import {
   READ_PENDING,
@@ -265,7 +265,7 @@ duelRoutes.post('/:id/read', async (c) => {
     .run();
   if (claim.meta.changes === 0) return c.json<DuelReadResponse>({ read: null, pending: true }, 202);
   try {
-    const read = await writeDuelRead({ db, apiKey: aiKey(c.env), member: me }, duel, marker);
+    const read = await writeDuelRead({ db, ai: aiSetup(c.env), member: me }, duel, marker);
     return c.json<DuelReadResponse>({ read, pending: false });
   } catch (err) {
     await db.prepare('UPDATE duels SET ai_read = NULL WHERE id = ? AND team_id = ? AND ai_read = ?').bind(id, me.team_id, marker).run();

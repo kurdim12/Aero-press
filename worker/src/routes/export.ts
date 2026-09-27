@@ -38,7 +38,9 @@ exportRoutes.get('/', async (c) => {
 
   if (part === 'team') {
     const row = await db
-      .prepare('SELECT id, name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, created_at FROM teams WHERE id = ?')
+      .prepare(
+        'SELECT id, name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, created_at FROM teams WHERE id = ?',
+      )
       .bind(team)
       .first<Record<string, unknown>>();
     return c.json<ExportPage>({ part, rows: row ? [row] : [], next: null });

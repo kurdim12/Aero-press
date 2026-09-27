@@ -61,6 +61,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   aiTransport.apiKey = undefined;
+  aiTransport.openRouterKey = undefined;
   aiTransport.fetch = undefined;
 });
 
@@ -171,7 +172,14 @@ describe('budget cap', () => {
     }
     expect(requests).toHaveLength(0);
     const usage = (await owner.get<AiUsage>('/api/coach/usage')).body;
-    expect(usage).toEqual({ configured: true, month_spend_usd: 0.05, cap_usd: 0.05, calls: 1 });
+    expect(usage).toEqual({
+      configured: true,
+      provider: 'anthropic',
+      models: { coach: 'claude-sonnet-5', quick: 'claude-haiku-4-5-20251001' },
+      month_spend_usd: 0.05,
+      cap_usd: 0.05,
+      calls: 1,
+    });
 
     // Last month's spend doesn't count.
     await env.DB.prepare('UPDATE ai_calls SET created_at = ?').bind(Date.now() - 40 * 86_400_000).run();

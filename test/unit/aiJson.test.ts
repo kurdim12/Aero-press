@@ -6,6 +6,8 @@ import {
   readinessOutput,
   todayOutput,
 } from '../../shared/schemas';
+import { OPENROUTER_DEFAULTS, OPENROUTER_MODELS } from '../../shared/aiModels';
+import { chatStreamUsage, deltaText, isStreamError, parseDataLine } from '../../shared/aiStream';
 import { MAX_TOKENS, MODELS, PRICES, costUsd } from '../../worker/src/ai/config';
 import { extractJson, parseAiJson, usageFromEvents } from '../../worker/src/ai/json';
 
@@ -152,5 +154,34 @@ describe('AI prices', () => {
       expect(PRICES[model], kind).toBeDefined();
       expect(costUsd(model, 1000, MAX_TOKENS[kind as keyof typeof MODELS]), kind).toBeGreaterThan(0);
     }
+    for (const model of OPENROUTER_MODELS) expect(costUsd(model.id, 1000, 1000), model.id).toBeGreaterThan(0);
+    for (const model of Object.values(OPENROUTER_DEFAULTS)) expect(OPENROUTER_MODELS.some((m) => m.id === model)).toBe(true);
+  });
+});
+
+describe('streamed answers from either provider', () => {
+  const anthropic = (text: string) => `data: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })}`;
+  const chat = (content: string) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}`;
+
+  it('reads text deltas in both formats and skips comments, [DONE] and junk', () => {
+    expect(deltaText(parseDataLine(anthropic('Brew '))!)).toBe('Brew ');
+    expect(deltaText(parseDataLine(chat('cooler.'))!)).toBe('cooler.');
+    expect(parseDataLine(': OPENROUTER PROCESSING')).toBeNull();
+    expect(parseDataLine('data: [DONE]')).toBeNull();
+    expect(parseDataLine('data: {broken')).toBeNull();
+    expect(deltaText(parseDataLine(`data: ${JSON.stringify({ type: 'message_start', message: {} })}`)!)).toBe('');
+  });
+
+  it('spots a stream that fails after it started', () => {
+    expect(isStreamError(parseDataLine(`data: ${JSON.stringify({ type: 'error', error: { type: 'overloaded_error' } })}`)!)).toBe(true);
+    expect(isStreamError(parseDataLine(`data: ${JSON.stringify({ error: { message: 'x' }, choices: [{ finish_reason: 'error' }] })}`)!)).toBe(true);
+    expect(isStreamError(parseDataLine(chat('fine'))!)).toBe(false);
+  });
+
+  it('finds OpenRouter’s usage and cost in the last chunk', () => {
+    const usage = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 1200, completion_tokens: 40, cost: 0.00105 } })}`;
+    const text = [': OPENROUTER PROCESSING', '', chat('say \"usage\" here'), '', usage, '', 'data: [DONE]', ''].join('\n');
+    expect(chatStreamUsage(text)).toEqual({ prompt_tokens: 1200, completion_tokens: 40, cost: 0.00105 });
+    expect(chatStreamUsage(chat('no usage yet'))).toBeNull();
   });
 });

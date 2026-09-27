@@ -65,5 +65,12 @@ export const MIGRATIONS: Migration[] = [
       "CREATE INDEX idx_brews_team_member_created ON brews (team_id, member_id, created_at)",
       "CREATE INDEX idx_brews_recipe_created ON brews (recipe_id, created_at)"
     ]
+  },
+  {
+    "name": "0004_ai_models.sql",
+    "queries": [
+      "ALTER TABLE teams ADD COLUMN ai_coach_model TEXT",
+      "ALTER TABLE teams ADD COLUMN ai_quick_model TEXT"
+    ]
   }
 ];

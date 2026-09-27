@@ -1,5 +1,6 @@
 // The AI coach in the app: queries, the streamed answer reader, and "Create as new recipe".
 import { queryOptions } from '@tanstack/react-query';
+import { deltaText, isStreamError, parseDataLine } from '../../shared/aiStream';
 import type { AiUsage, Experiment, ReadinessReport, TodayResponse } from '../../shared/types';
 import { ApiError, api, apiErrorFrom } from './api';
 import { stashRecipeDraft } from './drafts';
@@ -44,29 +45,32 @@ export async function streamAnswer(question: string, onText: (text: string) => v
   }
   if (!res.ok || !res.body) throw apiErrorFrom(res.status, await res.json().catch(() => null));
 
-  // Server-sent events: blank-line separated, each with a "data:" JSON line. Only text deltas matter.
+  // Server-sent events from either provider (Anthropic or OpenRouter), read line by line. Only the
+  // text deltas matter; comments, [DONE] and bookkeeping events add nothing.
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let text = '';
+  const take = (line: string) => {
+    const event = parseDataLine(line.trim());
+    if (!event) return;
+    if (isStreamError(event)) throw new ApiError(503, 'ai_busy', strings.errors.byCode.ai_busy as string);
+    const delta = deltaText(event);
+    if (delta) {
+      text += delta;
+      onText(text);
+    }
+  };
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    let end = buffer.indexOf('\n\n');
-    while (end >= 0) {
-      const event = buffer.slice(0, end);
-      buffer = buffer.slice(end + 2);
-      end = buffer.indexOf('\n\n');
-      const line = event.split('\n').find((l) => l.startsWith('data: '));
-      if (!line) continue;
-      const data = JSON.parse(line.slice(6)) as { type?: string; delta?: { type?: string; text?: string } };
-      if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta' && data.delta.text) {
-        text += data.delta.text;
-        onText(text);
-      } else if (data.type === 'error') {
-        throw new ApiError(503, 'ai_busy', strings.errors.byCode.ai_busy as string);
-      }
+    let nl = buffer.indexOf('\n');
+    while (nl >= 0) {
+      take(buffer.slice(0, nl));
+      buffer = buffer.slice(nl + 1);
+      nl = buffer.indexOf('\n');
     }
   }
+  take(buffer + decoder.decode());
 }

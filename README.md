@@ -37,10 +37,19 @@ by tapping their name and entering the team PIN.
 - The same screen has the championship name and date (the Board counts down to it) and the
   competition coffee notes.
 
-**Turn on the AI coach (once).**
-1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (Settings › API keys).
+**Turn on the AI coach (once).** The coach works with an OpenRouter key (any of several models)
+or an Anthropic key (Claude). If both are set, OpenRouter is used.
+1. Create a key at [openrouter.ai](https://openrouter.ai) (Keys) and add some credits there.
 2. In Cloudflare, go to **Workers & Pages › aero-press › Settings › Variables and Secrets ›
-   Add**. Choose type **Secret**, name it `ANTHROPIC_API_KEY`, paste the key, and deploy.
+   Add**. Choose type **Secret**, name it `OPENROUTER_API_KEY`, paste the key, and deploy.
+   (For Claude directly instead, use the name `ANTHROPIC_API_KEY` with a key from
+   [console.anthropic.com](https://console.anthropic.com).)
+3. Pick the models in **Settings › Team and championship › AI models**:
+   - **Coach model:** plans, reads and questions.
+   - **Quick model:** quick log and brew notes.
+   - Each option shows its price per million tokens. The default is Gemini 3.8 Flash.
+   - Switching is instant, so you can try a few models on your own data and keep the one whose
+     advice you like.
 
 The key stays in Cloudflare and never reaches anyone's phone. Until it's added, the rest of the
 app works and the Coach tab says the coach isn't set up.
@@ -85,7 +94,7 @@ Over plain http on the Wi-Fi, sign-in, the timer and logging work. Offline mode,
 screen awake and installing need https: use the deployed app, or `http://localhost:8787` on the
 computer itself.
 
-For the AI coach locally, copy `.dev.vars.example` to `.dev.vars` and put your key there.
+For the AI coach locally, copy `.dev.vars.example` to `.dev.vars` and put your OpenRouter (or Anthropic) key there.
 `test/fixtures/v1-backup.json` is a made-up v1 backup for trying the import.
 
 | Command | What it does |

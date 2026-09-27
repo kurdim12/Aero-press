@@ -2,6 +2,7 @@ import { Suspense, lazy, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { BoardRecipe, BoardResponse, ReadinessItem, VolumeMember } from '../../../shared/types';
+import { modelLabel } from '../../../shared/aiModels';
 import { UNRELIABLE_OVERALL_SD, UNRELIABLE_TDS_SD } from '../../../shared/dashboard';
 import { boardQuery } from '../board';
 import { SERIES_COLORS } from '../chartColors';
@@ -377,6 +378,7 @@ function AiSpend({ ai, isOwner }: { ai: BoardResponse['ai']; isOwner: boolean })
           <div className="meter" role="meter" aria-valuemin={0} aria-valuemax={ai.cap_usd} aria-valuenow={ai.month_spend_usd} aria-label={s.ai}>
             <span className={pct >= 90 ? 'warn' : undefined} style={{ width: `${pct}%` }} />
           </div>
+          {ai.models && <p className="muted small" style={{ marginTop: 8 }}>{s.aiModel(modelLabel(ai.models.coach))}</p>}
         </>
       ) : (
         <p className="muted">{s.aiNotConfigured}</p>

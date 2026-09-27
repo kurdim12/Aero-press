@@ -1,6 +1,7 @@
 // zod schemas for every API input. The Worker validates with these; the web app
 // only imports their inferred types.
 import { z } from 'zod';
+import { OPENROUTER_MODEL_IDS } from './aiModels';
 import { BREW_LIMITS } from './limits';
 import { DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS } from './types';
 
@@ -165,6 +166,8 @@ export const teamSettingsInput = z.object({
     .number({ error: 'Enter the budget in dollars, like 10.' })
     .min(0, 'The budget can’t be negative.')
     .max(AI_BUDGET_MAX_USD, `Keep the budget at $${AI_BUDGET_MAX_USD} or less.`),
+  ai_coach_model: z.enum(OPENROUTER_MODEL_IDS, { error: 'Pick a model from the list.' }).nullable().optional(),
+  ai_quick_model: z.enum(OPENROUTER_MODEL_IDS, { error: 'Pick a model from the list.' }).nullable().optional(),
 });
 export type TeamSettingsInput = z.input<typeof teamSettingsInput>;
 

@@ -1,49 +1,96 @@
-// Every AI call goes through here: budget check first, then the Anthropic API (from the Worker
-// only; the key never reaches the browser), then tokens and cost logged in ai_calls.
+// Every AI call goes through here: the budget check first, then the provider (OpenRouter or
+// Anthropic, called from the Worker only; keys never reach the browser), then tokens and cost
+// logged in ai_calls.
 import Anthropic from '@anthropic-ai/sdk';
 import type { z } from 'zod';
+import { type ModelRole, OPENROUTER_DEFAULTS, OPENROUTER_MODEL_IDS } from '../../../shared/aiModels';
+import type { AiUsage } from '../../../shared/types';
+import { chatStreamUsage } from '../../../shared/aiStream';
 import type { AuthMember } from '../env';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
-import { type AiKind, EFFORT, MAX_TOKENS, MODELS, costUsd, monthStart } from './config';
-import { type Usage, parseAiJson, usageFromEvents } from './json';
+import { type AiKind, EFFORT, KIND_ROLE, MAX_TOKENS, MODELS, costUsd, monthStart } from './config';
+import { parseAiJson, usageFromEvents } from './json';
+import { ProviderHttpError, ProviderStreamError, chatBody, openRouterStream, readChatStream } from './openrouter';
+import { type AiSetup, aiSetup, aiTransport } from './transport';
 
-/** Tests swap the network for canned replies (and supply a key); production never sets these. */
-export const aiTransport: { fetch?: typeof fetch; apiKey?: string } = {};
-
-/** The Anthropic key: the Wrangler secret ANTHROPIC_API_KEY. */
-export const aiKey = (env: { ANTHROPIC_API_KEY?: string }): string | undefined => env.ANTHROPIC_API_KEY ?? aiTransport.apiKey;
+export { aiSetup, aiTransport };
 
 export interface AiScope {
   db: D1Database;
-  apiKey: string | undefined;
+  /** Provider and key (null until the owner adds one in Cloudflare). */
+  ai: AiSetup | null;
   member: AuthMember;
 }
 
-function client(apiKey: string | undefined): Anthropic {
-  if (!apiKey) {
-    throw new ApiError(503, 'ai_not_configured', 'The AI coach isn’t set up yet. The owner needs to add the Anthropic API key in Cloudflare (see the README).');
+function setupOf(scope: AiScope): AiSetup {
+  if (!scope.ai) {
+    throw new ApiError(503, 'ai_not_configured', 'The AI coach isn’t set up yet. The owner needs to add an OpenRouter or Anthropic API key in Cloudflare (see the README).');
   }
-  return new Anthropic({ apiKey, fetch: aiTransport.fetch, maxRetries: 1, timeout: 90_000 });
+  return scope.ai;
 }
 
-export async function monthSpend(db: D1Database, teamId: string): Promise<{ spent: number; calls: number; cap: number }> {
+const anthropic = (key: string) => new Anthropic({ apiKey: key, fetch: aiTransport.fetch, maxRetries: 1, timeout: 90_000 });
+
+/** This month's spend, the cap, and the models the owner picked. */
+export interface TeamAi {
+  spent: number;
+  calls: number;
+  cap: number;
+  coach_model: string | null;
+  quick_model: string | null;
+}
+
+export async function monthSpend(db: D1Database, teamId: string): Promise<TeamAi> {
   const [team, usage] = await Promise.all([
-    db.prepare('SELECT ai_monthly_budget_usd AS cap FROM teams WHERE id = ?').bind(teamId).first<{ cap: number }>(),
+    db
+      .prepare('SELECT ai_monthly_budget_usd AS cap, ai_coach_model, ai_quick_model FROM teams WHERE id = ?')
+      .bind(teamId)
+      .first<{ cap: number; ai_coach_model: string | null; ai_quick_model: string | null }>(),
     db
       .prepare('SELECT COALESCE(SUM(cost_usd), 0) AS spent, COUNT(*) AS calls FROM ai_calls WHERE team_id = ? AND created_at >= ?')
       .bind(teamId, monthStart())
       .first<{ spent: number; calls: number }>(),
   ]);
-  return { spent: usage?.spent ?? 0, calls: usage?.calls ?? 0, cap: team?.cap ?? 0 };
+  return {
+    spent: usage?.spent ?? 0,
+    calls: usage?.calls ?? 0,
+    cap: team?.cap ?? 0,
+    coach_model: team?.ai_coach_model ?? null,
+    quick_model: team?.ai_quick_model ?? null,
+  };
+}
+
+/** The OpenRouter model for a role: the owner's pick if it's still on the list, else the default. */
+export function openRouterModel(team: Pick<TeamAi, 'coach_model' | 'quick_model'>, role: ModelRole): string {
+  const picked = role === 'coach' ? team.coach_model : team.quick_model;
+  return picked && (OPENROUTER_MODEL_IDS as readonly string[]).includes(picked) ? picked : OPENROUTER_DEFAULTS[role];
+}
+
+/** The model a call uses: the spec's Claude pair on an Anthropic key, the owner's picks on OpenRouter. */
+export function modelFor(setup: AiSetup, kind: AiKind, team: Pick<TeamAi, 'coach_model' | 'quick_model'>): string {
+  return setup.provider === 'openrouter' ? openRouterModel(team, KIND_ROLE[kind]) : MODELS[kind];
+}
+
+/** What the Coach tab and the Board show about the AI: set up or not, which models, spend and cap. */
+export function aiUsage(setup: AiSetup | null, team: TeamAi): AiUsage {
+  return {
+    configured: setup !== null,
+    provider: setup?.provider ?? null,
+    models: setup ? { coach: modelFor(setup, 'plan', team), quick: modelFor(setup, 'quickLog', team) } : null,
+    month_spend_usd: Math.round(team.spent * 10_000) / 10_000,
+    cap_usd: team.cap,
+    calls: team.calls,
+  };
 }
 
 /** Before every call: stop once the month's spend reaches the owner's cap. */
-export async function assertBudget(db: D1Database, teamId: string): Promise<void> {
-  const { spent, cap } = await monthSpend(db, teamId);
-  if (spent >= cap) {
+async function checkBudget(scope: AiScope): Promise<TeamAi> {
+  const team = await monthSpend(scope.db, scope.member.team_id);
+  if (team.spent >= team.cap) {
     throw new ApiError(402, 'ai_budget_exceeded', 'AI budget for this month is used up. The owner can raise it in Settings.');
   }
+  return team;
 }
 
 /** About 3 characters a token, rounded up: a reservation should err high. */
@@ -56,8 +103,7 @@ const estimateTokens = (text: string) => Math.ceil(text.length / 3);
  * row is corrected once the real usage is known. Prices come from the model we asked for, so a
  * differently named model in the reply can never make a call look free.
  */
-async function reserve(scope: AiScope, kind: AiKind, system: string, user: string): Promise<string> {
-  const model = MODELS[kind];
+async function reserve(scope: AiScope, kind: AiKind, model: string, system: string, user: string): Promise<string> {
   const input = estimateTokens(system) + estimateTokens(user);
   const output = MAX_TOKENS[kind];
   const id = newId();
@@ -71,41 +117,60 @@ async function reserve(scope: AiScope, kind: AiKind, system: string, user: strin
   return id;
 }
 
-async function settle(scope: AiScope, id: string, kind: AiKind, usage: Usage): Promise<void> {
-  const input = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
+/** The real usage of a call. `cost` is what the provider charged, when it says (OpenRouter does). */
+interface Spent {
+  input: number;
+  output: number;
+  cost: number | null;
+}
+
+async function settle(scope: AiScope, id: string, model: string, spent: Spent): Promise<void> {
+  const cost = spent.cost ?? costUsd(model, spent.input, spent.output);
   await scope.db
     .prepare('UPDATE ai_calls SET input_tokens = ?, output_tokens = ?, cost_usd = ? WHERE id = ? AND team_id = ?')
-    .bind(input, usage.output_tokens, costUsd(MODELS[kind], input, usage.output_tokens), id, scope.member.team_id)
+    .bind(spent.input, spent.output, cost, id, scope.member.team_id)
     .run();
 }
 
-/** The API turned the request away with an HTTP error, so nothing was billed. */
-const refusedByApi = (err: unknown) => err instanceof Anthropic.APIError && typeof err.status === 'number';
+/** The provider turned the request away with an HTTP error, so nothing was billed. */
+const refusedByApi = (err: unknown) =>
+  err instanceof ProviderHttpError || (err instanceof Anthropic.APIError && typeof err.status === 'number');
 
 async function release(scope: AiScope, id: string): Promise<void> {
   await scope.db.prepare('DELETE FROM ai_calls WHERE id = ? AND team_id = ?').bind(id, scope.member.team_id).run();
 }
 
-/** Anthropic's errors, in words the team can act on. Retryable ones say "try again". */
+const keyInvalid = () => new ApiError(503, 'ai_key_invalid', 'The AI key was refused. The owner needs to check it in Cloudflare.');
+const busy = () => new ApiError(503, 'ai_busy', 'The AI coach is busy right now. Try again in a minute.');
+const billing = () =>
+  new ApiError(503, 'ai_billing', 'The AI account can’t take requests right now (credits or billing). The owner needs to check it.');
+const refused = () => new ApiError(422, 'ai_refused', 'The coach couldn’t answer that one. Try asking another way.');
+
+/** Provider errors, in words the team can act on. Retryable ones say "try again". */
 export function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
-  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
-    return new ApiError(503, 'ai_key_invalid', 'The Anthropic API key was refused. The owner needs to check it in Cloudflare.');
+  if (err instanceof ProviderHttpError) {
+    if (err.status === 401) return keyInvalid();
+    if (err.status === 402) return billing();
+    if (err.status === 403) return refused(); // OpenRouter's moderation flagged the request
+    if (err.status === 408 || err.status === 429 || err.status >= 500) return busy();
+    console.error('AI call failed', err.status, err.message);
+    return new ApiError(502, 'ai_failed', 'The AI coach couldn’t answer. Try again; if it keeps happening, tell the owner.');
   }
+  if (err instanceof ProviderStreamError || (err instanceof Error && err.name === 'AbortError')) return busy();
+  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) return keyInvalid();
   if (err instanceof Anthropic.RateLimitError || err instanceof Anthropic.InternalServerError || err instanceof Anthropic.APIConnectionError) {
-    return new ApiError(503, 'ai_busy', 'The AI coach is busy right now. Try again in a minute.');
+    return busy();
   }
-  if (err instanceof Anthropic.APIError && err.status === 402) {
-    return new ApiError(503, 'ai_billing', 'The Anthropic account can’t take requests right now (billing). The owner needs to check it.');
-  }
+  if (err instanceof Anthropic.APIError && err.status === 402) return billing();
   console.error('AI call failed', err instanceof Error ? err.message : String(err));
   return new ApiError(502, 'ai_failed', 'The AI coach couldn’t answer. Try again; if it keeps happening, tell the owner.');
 }
 
-function params(kind: AiKind, system: string, user: string) {
+function anthropicParams(model: string, kind: AiKind, system: string, user: string) {
   const effort = EFFORT[kind];
   return {
-    model: MODELS[kind],
+    model,
     max_tokens: MAX_TOKENS[kind],
     system,
     messages: [{ role: 'user' as const, content: user }],
@@ -114,24 +179,45 @@ function params(kind: AiKind, system: string, user: string) {
 }
 
 /**
- * One call, text back. It streams under the hood: the SDK's timeout only covers the wait for the
- * first bytes, so a long answer is never cut off (and then paid for again by a retry).
+ * One call, text back. It streams under the hood on either provider: a timeout only covers the
+ * wait for the first bytes, so a long answer is never cut off (and then paid for again).
  */
 export async function askText(scope: AiScope, kind: AiKind, system: string, user: string): Promise<string> {
-  await assertBudget(scope.db, scope.member.team_id);
-  const anthropic = client(scope.apiKey);
-  const reservation = await reserve(scope, kind, system, user);
+  const setup = setupOf(scope);
+  const model = modelFor(setup, kind, await checkBudget(scope));
+  const reservation = await reserve(scope, kind, model, system, user);
+
+  if (setup.provider === 'openrouter') {
+    let result: Awaited<ReturnType<typeof readChatStream>>;
+    try {
+      const res = await openRouterStream(setup.key, chatBody(model, kind, system, user));
+      result = await readChatStream(res.body!);
+    } catch (err) {
+      if (refusedByApi(err)) await release(scope, reservation);
+      throw toApiError(err);
+    }
+    // No usage in the reply: the worst-case reservation stands.
+    if (result.usage) {
+      await settle(scope, reservation, model, { input: result.usage.prompt_tokens, output: result.usage.completion_tokens, cost: result.usage.cost });
+    }
+    if (result.finish === 'content_filter') throw refused();
+    return result.text;
+  }
+
   let message: Anthropic.Message;
   try {
-    message = await anthropic.messages.stream(params(kind, system, user)).finalMessage();
+    message = await anthropic(setup.key).messages.stream(anthropicParams(model, kind, system, user)).finalMessage();
   } catch (err) {
     if (refusedByApi(err)) await release(scope, reservation);
     throw toApiError(err);
   }
-  await settle(scope, reservation, kind, message.usage);
-  if (message.stop_reason === 'refusal') {
-    throw new ApiError(422, 'ai_refused', 'The coach couldn’t answer that one. Try asking another way.');
-  }
+  const u = message.usage;
+  await settle(scope, reservation, model, {
+    input: u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
+    output: u.output_tokens,
+    cost: null,
+  });
+  if (message.stop_reason === 'refusal') throw refused();
   return message.content
     .map((block) => (block.type === 'text' ? block.text : ''))
     .join('')
@@ -150,9 +236,9 @@ export async function askJson<S extends z.ZodType>(scope: AiScope, kind: AiKind,
 }
 
 /**
- * A streamed answer. Anthropic's event stream goes to the phone as it is (the app reads the text
- * deltas), so the Worker spends almost no CPU per token. A copy is scanned at the end for the
- * token counts, which are logged once the stream finishes.
+ * A streamed answer. The provider's event stream goes to the phone as it is (the app reads the
+ * text deltas of either format), so the Worker spends almost no CPU per token. A copy is scanned
+ * at the end for the tokens and cost, which settle the reservation.
  */
 export async function askStream(
   scope: AiScope,
@@ -160,27 +246,43 @@ export async function askStream(
   system: string,
   user: string,
 ): Promise<{ body: ReadableStream<Uint8Array>; done: Promise<void> }> {
-  await assertBudget(scope.db, scope.member.team_id);
-  const anthropic = client(scope.apiKey);
-  const reservation = await reserve(scope, kind, system, user);
+  const setup = setupOf(scope);
+  const model = modelFor(setup, kind, await checkBudget(scope));
+  const reservation = await reserve(scope, kind, model, system, user);
   let upstream: Response;
   try {
-    upstream = await anthropic.messages.create({ ...params(kind, system, user), stream: true }).asResponse();
+    upstream =
+      setup.provider === 'openrouter'
+        ? await openRouterStream(setup.key, chatBody(model, kind, system, user))
+        : await anthropic(setup.key).messages.create({ ...anthropicParams(model, kind, system, user), stream: true }).asResponse();
   } catch (err) {
     if (refusedByApi(err)) await release(scope, reservation);
     throw toApiError(err);
   }
-  if (!upstream.body) throw toApiError(new Error('empty stream'));
+  if (!upstream.body) throw toApiError(new ProviderStreamError('empty stream'));
   const [toPhone, toMeter] = upstream.body.tee();
   // A stream that breaks off before reporting its usage keeps the worst-case reservation.
-  const done = meterStream(toMeter)
-    .then((usage) => (usage.input_tokens > 0 ? settle(scope, reservation, kind, usage) : undefined))
+  const done = readAll(toMeter)
+    .then((text) => {
+      const spent = spentFromStream(setup, text);
+      return spent ? settle(scope, reservation, model, spent) : undefined;
+    })
     .catch((err: unknown) => console.error('AI stream metering failed', err instanceof Error ? err.message : String(err)));
   return { body: toPhone, done };
 }
 
-/** Token counts from a Messages event stream: message_start has the input, the last message_delta the output. */
-export async function meterStream(stream: ReadableStream<Uint8Array>): Promise<Usage> {
+/** Tokens and cost reported at the end of a stream, in either provider's format. */
+function spentFromStream(setup: AiSetup, text: string): Spent | null {
+  if (setup.provider === 'openrouter') {
+    const usage = chatStreamUsage(text);
+    return usage ? { input: usage.prompt_tokens, output: usage.completion_tokens, cost: usage.cost } : null;
+  }
+  const u = usageFromEvents(text);
+  if (u.input_tokens <= 0) return null;
+  return { input: u.input_tokens + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0), output: u.output_tokens, cost: null };
+}
+
+async function readAll(stream: ReadableStream<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
   let text = '';
   const reader = stream.getReader();
@@ -189,6 +291,5 @@ export async function meterStream(stream: ReadableStream<Uint8Array>): Promise<U
     if (done) break;
     text += decoder.decode(value, { stream: true });
   }
-  text += decoder.decode();
-  return usageFromEvents(text);
+  return text + decoder.decode();
 }

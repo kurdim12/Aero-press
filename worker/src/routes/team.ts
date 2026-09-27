@@ -16,7 +16,8 @@ meRoutes.get('/', async (c) => c.json<MeResponse>(await meResponse(c.env.DB, c.g
 export const teamRoutes = new Hono<AppEnv>();
 teamRoutes.use('*', requireMember);
 
-const SETTINGS_SELECT = 'SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd FROM teams WHERE id = ?';
+const SETTINGS_SELECT =
+  'SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model FROM teams WHERE id = ?';
 
 /** Team name, championship details and the AI budget. Everyone may read them. */
 teamRoutes.get('/', async (c) => {
@@ -31,9 +32,26 @@ teamRoutes.put('/', requireOwner, async (c) => {
   const me = c.get('member');
   const budget = Math.round(input.ai_monthly_budget_usd * 100) / 100;
   const db = c.env.DB;
+  // Model picks are optional in the body: leaving them out keeps what's saved.
   await db
-    .prepare('UPDATE teams SET name = ?, champ_name = ?, champ_date = ?, comp_coffee_notes = ?, ai_monthly_budget_usd = ? WHERE id = ?')
-    .bind(input.name, input.champ_name ?? null, input.champ_date ?? null, input.comp_coffee_notes ?? null, budget, me.team_id)
+    .prepare(
+      `UPDATE teams SET name = ?, champ_name = ?, champ_date = ?, comp_coffee_notes = ?, ai_monthly_budget_usd = ?,
+              ai_coach_model = CASE WHEN ? THEN ? ELSE ai_coach_model END,
+              ai_quick_model = CASE WHEN ? THEN ? ELSE ai_quick_model END
+        WHERE id = ?`,
+    )
+    .bind(
+      input.name,
+      input.champ_name ?? null,
+      input.champ_date ?? null,
+      input.comp_coffee_notes ?? null,
+      budget,
+      input.ai_coach_model !== undefined ? 1 : 0,
+      input.ai_coach_model ?? null,
+      input.ai_quick_model !== undefined ? 1 : 0,
+      input.ai_quick_model ?? null,
+      me.team_id,
+    )
     .run();
   const row = await db.prepare(SETTINGS_SELECT).bind(me.team_id).first<TeamSettings>();
   if (!row) throw notFound('team');

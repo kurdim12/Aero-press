@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { BeanRow, ExperimentsResponse, ReadinessReport, RecipeRow, TodayResponse } from '../../../shared/types';
+import { modelLabel } from '../../../shared/aiModels';
 import { aiUsageQuery, readinessQuery, streamAnswer, todayQuery } from '../ai';
 import { api, errorMessage } from '../api';
 import { ExperimentCard } from '../components/ExperimentCard';
@@ -32,7 +33,9 @@ export function CoachScreen() {
         {usage.data && !usage.data.configured && <p className="notice" style={{ marginTop: 8 }}>{c.notConfigured}</p>}
         {usage.data && usage.data.configured && (
           <p className="muted small" style={{ marginTop: 8 }}>
-            {c.spend(c.money(usage.data.month_spend_usd), c.money(usage.data.cap_usd))}
+            {usage.data.models
+              ? c.spendModel(c.money(usage.data.month_spend_usd), c.money(usage.data.cap_usd), modelLabel(usage.data.models.coach))
+              : c.spend(c.money(usage.data.month_spend_usd), c.money(usage.data.cap_usd))}
           </p>
         )}
         <TodayCard enabled={enabled} />

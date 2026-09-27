@@ -5,8 +5,9 @@ declare global {
     interface Env {
       DB: D1Database;
       ASSETS: Fetcher;
-      /** Wrangler secret. Only ever read inside the Worker. */
+      /** Wrangler secrets. Only ever read inside the Worker. OpenRouter is used when its key is set. */
       ANTHROPIC_API_KEY?: string;
+      OPENROUTER_API_KEY?: string;
     }
   }
 }

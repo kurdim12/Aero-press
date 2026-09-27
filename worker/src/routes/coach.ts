@@ -19,7 +19,7 @@ import {
   todayOutput,
 } from '../../../shared/schemas';
 import { requireMember } from '../middleware/auth';
-import { type AiScope, aiKey, askJson, askStream, monthSpend } from '../ai/client';
+import { type AiScope, aiSetup, aiUsage, askJson, askStream, monthSpend } from '../ai/client';
 import { localDay } from '../ai/config';
 import { buildContextPack, findRecipeByCode } from '../ai/context';
 import { toExperiment, type TeamBean } from '../ai/experiments';
@@ -43,7 +43,7 @@ import { readJson } from '../lib/validate';
 export const coachRoutes = new Hono<AppEnv>();
 coachRoutes.use('*', requireMember);
 
-const scopeOf = (c: Context<AppEnv>): AiScope => ({ db: c.env.DB, apiKey: aiKey(c.env), member: c.get('member') });
+const scopeOf = (c: Context<AppEnv>): AiScope => ({ db: c.env.DB, ai: aiSetup(c.env), member: c.get('member') });
 
 async function teamBeans(db: D1Database, teamId: string): Promise<TeamBean[]> {
   const { results } = await db.prepare('SELECT id, name FROM beans WHERE team_id = ?').bind(teamId).all<TeamBean>();
@@ -52,8 +52,7 @@ async function teamBeans(db: D1Database, teamId: string): Promise<TeamBean[]> {
 
 coachRoutes.get('/usage', async (c) => {
   const me = c.get('member');
-  const { spent, calls, cap } = await monthSpend(c.env.DB, me.team_id);
-  return c.json<AiUsage>({ configured: Boolean(aiKey(c.env)), month_spend_usd: Math.round(spent * 10_000) / 10_000, cap_usd: cap, calls });
+  return c.json<AiUsage>(aiUsage(aiSetup(c.env), await monthSpend(c.env.DB, me.team_id)));
 });
 
 /** Plan the next session: three experiments to duel against their parents. */

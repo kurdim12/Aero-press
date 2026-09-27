@@ -31,7 +31,7 @@ import {
   weekOf,
 } from '../../../shared/dashboard';
 import { requireMember } from '../middleware/auth';
-import { aiKey, monthSpend } from '../ai/client';
+import { aiSetup, aiUsage, monthSpend } from '../ai/client';
 import { TEAM_UTC_OFFSET_MS } from '../ai/config';
 import { initialsOf } from '../../../shared/initials';
 import { notFound, ownerOnly } from '../lib/errors';
@@ -258,12 +258,7 @@ boardRoutes.get('/', async (c) => {
     consistency,
     volume: { days, members: volumeMembers },
     readiness,
-    ai: {
-      configured: Boolean(aiKey(c.env)),
-      month_spend_usd: Math.round(spend.spent * 10_000) / 10_000,
-      cap_usd: spend.cap,
-      calls: spend.calls,
-    },
+    ai: aiUsage(aiSetup(c.env), spend),
   });
 });
 

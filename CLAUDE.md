@@ -5,9 +5,11 @@ tests working screens at each checkpoint; they don't review diffs. Stop at each 
 
 ## Stack (fixed by the brief; don't substitute)
 Cloudflare Workers + Hono (TypeScript), D1, Vite + React + TS served as Workers Static Assets
-from the same Worker, zod on every API input, Anthropic API from the Worker only
-(`claude-sonnet-5` coach, `claude-haiku-4-5-20251001` quick log; model IDs + prices in one config
-file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Recharts.
+from the same Worker, zod on every API input, AI from the Worker only, PWA. Router: wouter. Data
+fetching: TanStack Query. Charts (phase 6): Recharts.
+- AI provider (user's request after phase 7): OpenRouter when `OPENROUTER_API_KEY` is set, else
+  the Anthropic API (`claude-sonnet-5` coach, `claude-haiku-4-5-20251001` quick log).
+- Model IDs and prices: `worker/src/ai/config.ts`, plus the OpenRouter list in `shared/aiModels.ts`.
 
 ## Commands
 - `npm run dev`: build + local migrations + `wrangler dev` on :8787
@@ -180,6 +182,23 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   - Prices: Sonnet 5 at $2 / $10 per million tokens (the introductory price is now permanent),
     Haiku 4.5 at $1 / $5.
 
+- OpenRouter (added at the user's request: an OpenRouter key and cheaper models than Claude):
+  - `worker/src/ai/openrouter.ts` calls chat completions, always streamed, with
+    `reasoning: { effort, exclude: true }`. `aiSetup(env)` (transport.ts) prefers OpenRouter when
+    both keys are set.
+  - The owner picks a coach model and a quick model in Settings (`teams.ai_coach_model`,
+    `ai_quick_model`, migration 0004), from `OPENROUTER_MODELS` in `shared/aiModels.ts` (ids and
+    Sept 2026 prices; default Gemini 3.8 Flash). A pick no longer on the list falls back to the
+    default.
+  - Costs:
+    - Reservations are priced from that list.
+    - Settling uses OpenRouter's reported `usage.cost` (always in the last stream chunk).
+    - HTTP errors release the reservation; a mid-stream error or a missing usage chunk keeps the
+      worst case.
+  - The phone reads both stream formats through `shared/aiStream.ts`: Anthropic events and chat
+    chunks, skipping `: OPENROUTER PROCESSING` comments and `[DONE]`.
+  - Quality claims about other models are the vendors' own. The owner can switch in Settings, and
+    every JSON answer is still checked with zod, with one retry.
 - Champion recipes (`shared/champions.ts`, screens under `/recipes/champions`): WAC podium recipes
   researched from the official WAC and aeropress.com pages plus coffee press (search summaries;
   pages couldn't be opened from here).

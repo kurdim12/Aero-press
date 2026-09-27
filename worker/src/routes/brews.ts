@@ -3,7 +3,7 @@ import type { AppEnv } from '../env';
 import type { BrewRow } from '../../../shared/types';
 import { brewInput } from '../../../shared/schemas';
 import { extractionYield } from '../../../shared/formulas';
-import { aiKey } from '../ai/client';
+import { aiSetup } from '../ai/client';
 import { writeBrewRead } from '../ai/reads';
 import { requireMember } from '../middleware/auth';
 import { ApiError } from '../lib/errors';
@@ -87,9 +87,10 @@ brewRoutes.post('/', async (c) => {
     )
     .run();
   // The coach's two-sentence read comes after the response; the recipe screen picks it up.
-  if (aiKey(c.env)) {
+  const ai = aiSetup(c.env);
+  if (ai) {
     c.executionCtx.waitUntil(
-      writeBrewRead({ db, apiKey: aiKey(c.env), member: me }, id).catch((err: unknown) =>
+      writeBrewRead({ db, ai, member: me }, id).catch((err: unknown) =>
         console.error('Brew read failed', err instanceof Error ? err.message : String(err)),
       ),
     );
