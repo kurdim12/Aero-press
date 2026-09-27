@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Redirect, Route, Switch } from 'wouter';
 import type { MeResponse } from '../../shared/types';
@@ -11,7 +11,6 @@ import { BoardScreen } from './screens/BoardScreen';
 import { BrewLogScreen } from './screens/BrewLogScreen';
 import { BrewScreen } from './screens/BrewScreen';
 import { BrewTimerScreen } from './screens/BrewTimerScreen';
-import { ChampionScreen, ChampionsScreen } from './screens/ChampionsScreen';
 import { CoachScreen } from './screens/CoachScreen';
 import { CompareScreen } from './screens/CompareScreen';
 import { DuelNewScreen } from './screens/DuelNewScreen';
@@ -25,6 +24,7 @@ import { RecipeDetailScreen } from './screens/RecipeDetailScreen';
 import { RecipeFormScreen } from './screens/RecipeFormScreen';
 import { RecipesScreen } from './screens/RecipesScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { TeamSettingsScreen } from './screens/TeamSettingsScreen';
 import { SetupScreen } from './screens/SetupScreen';
 import { SignInScreen } from './screens/SignInScreen';
 import { startBrewSync } from './offline/brewSync';
@@ -32,6 +32,11 @@ import { beansQuery, invalidateLibrary, recipesQuery } from './queries';
 import { useScrollToTop } from './scroll';
 import { MeProvider, meQuery, setupStatusQuery } from './session';
 import { strings } from './strings';
+
+// The champion library carries its own data, so it loads when first opened.
+const championScreens = () => import('./screens/ChampionsScreen');
+const ChampionsScreen = lazy(() => championScreens().then((m) => ({ default: m.ChampionsScreen })));
+const ChampionScreen = lazy(() => championScreens().then((m) => ({ default: m.ChampionScreen })));
 
 export function App() {
   const status = useQuery(setupStatusQuery);
@@ -70,8 +75,18 @@ function Shell({ me }: { me: MeResponse }) {
           </Route>
           <Route path="/beans/:id">{(p) => <BeanFormScreen id={p.id} />}</Route>
           <Route path="/recipes" component={RecipesScreen} />
-          <Route path="/recipes/champions" component={ChampionsScreen} />
-          <Route path="/recipes/champions/:id">{(p) => <ChampionScreen id={p.id} />}</Route>
+          <Route path="/recipes/champions">
+            <Suspense fallback={<Splash />}>
+              <ChampionsScreen />
+            </Suspense>
+          </Route>
+          <Route path="/recipes/champions/:id">
+            {(p) => (
+              <Suspense fallback={<Splash />}>
+                <ChampionScreen id={p.id} />
+              </Suspense>
+            )}
+          </Route>
           <Route path="/recipes/new">
             <RecipeFormScreen />
           </Route>
@@ -88,6 +103,7 @@ function Shell({ me }: { me: MeResponse }) {
           <Route path="/duel/:id">{(p) => <DuelScreen id={p.id} />}</Route>
           <Route path="/coach" component={CoachScreen} />
           <Route path="/settings" component={SettingsScreen} />
+          <Route path="/settings/team">{isOwner ? <TeamSettingsScreen /> : <Redirect to="/settings" replace />}</Route>
           <Route path="/settings/members">{isOwner ? <MembersScreen /> : <Redirect to="/settings" replace />}</Route>
           <Route path="/settings/import">{isOwner ? <ImportScreen /> : <Redirect to="/settings" replace />}</Route>
           <Route>

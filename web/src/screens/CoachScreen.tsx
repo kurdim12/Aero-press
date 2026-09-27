@@ -49,8 +49,11 @@ function useSpendRefresh() {
   return () => void qc.invalidateQueries({ queryKey: ['ai-usage'] });
 }
 
-/** Written once per member per day, the first time the card is shown. */
-export function TodayCard({ enabled }: { enabled: boolean }) {
+/**
+ * Written once per member per day, the first time the card is shown. `quiet` (on the Board) shows
+ * nothing unless there is a card or one is being written: the Coach tab explains any problem.
+ */
+export function TodayCard({ enabled, quiet = false }: { enabled: boolean; quiet?: boolean }) {
   const qc = useQueryClient();
   const refreshSpend = useSpendRefresh();
   const today = useQuery(todayQuery);
@@ -69,6 +72,7 @@ export function TodayCard({ enabled }: { enabled: boolean }) {
   }, [enabled, today.data, mutate]);
 
   const session = today.data?.session;
+  if (quiet && !session && !write.isPending) return null;
   return (
     <section className="section">
       <span className="eyebrow">{c.today}</span>
@@ -99,6 +103,8 @@ export function TodayCard({ enabled }: { enabled: boolean }) {
         </div>
       ) : write.isPending ? (
         <p className="muted">{c.todayLoading}</p>
+      ) : today.data?.needs_recipes ? (
+        <p className="muted">{c.todayNeedsRecipes}</p>
       ) : write.isError ? (
         <FormError>{errorMessage(write.error)}</FormError>
       ) : today.isError ? (

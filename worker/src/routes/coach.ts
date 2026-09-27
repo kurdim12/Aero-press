@@ -109,6 +109,9 @@ coachRoutes.post('/today', async (c) => {
   const today = localDay();
   const cached = await cachedToday(scope.db, scope.member.id, today);
   if (cached) return c.json<TodayResponse>({ session: cached });
+  // Nothing to duel yet: no call, and nothing cached, so the card writes itself once there is.
+  const count = await scope.db.prepare('SELECT COUNT(*) AS n FROM recipes WHERE team_id = ?').bind(scope.member.team_id).first<{ n: number }>();
+  if ((count?.n ?? 0) < 2) return c.json<TodayResponse>({ session: null, needs_recipes: true });
   const { pack, recipes } = await buildContextPack(scope.db, scope.member, { recipeLimit: 12 });
   const out = await askJson(scope, 'today', todayOutput, COACH_SYSTEM, `${dataBlock(pack)}\n\n${TODAY_PROMPT}`);
   const session: TodaySession = {

@@ -114,7 +114,7 @@ function byRank(a: RecipeRow, b: RecipeRow): number {
 export async function listRecipes(
   db: D1Database,
   teamId: string,
-  opts: { ownerId?: string; beanId?: string } = {},
+  opts: { ownerId?: string; beanId?: string; duels?: EloDuel[] } = {},
 ): Promise<RecipeRow[]> {
   const where = ['r.team_id = ?'];
   const params: unknown[] = [teamId];
@@ -133,7 +133,7 @@ export async function listRecipes(
       .prepare(`${RECIPE_SELECT} WHERE ${where.join(' AND ')}`)
       .bind(...params)
       .all<RecipeDbRow>(),
-    loadRevealedDuels(db, teamId),
+    opts.duels ?? loadRevealedDuels(db, teamId),
   ]);
   const table = replayElo(duels, { beanId: opts.beanId ?? null });
   return results.map((r) => toRecipeRow(r, table.get(r.id) ?? newStanding())).sort(byRank);

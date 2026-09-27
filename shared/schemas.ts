@@ -2,7 +2,7 @@
 // only imports their inferred types.
 import { z } from 'zod';
 import { BREW_LIMITS } from './limits';
-import { DUEL_CHOICES, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS } from './types';
+import { DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
 
@@ -150,6 +150,29 @@ export const recipeUpdate = recipeFields.refine(pressAfterBloom, pressAfterBloom
 export type RecipeUpdate = z.input<typeof recipeUpdate>;
 
 export const recipeLockInput = z.object({ locked: z.boolean() });
+
+// ---------- Team settings and backup ----------
+
+export const AI_BUDGET_MAX_USD = 1000;
+
+/** Owner's settings form: everything is sent each time (a full replacement). */
+export const teamSettingsInput = z.object({
+  name: teamName,
+  champ_name: text(120),
+  champ_date: optionalDate,
+  comp_coffee_notes: text(2000),
+  ai_monthly_budget_usd: z
+    .number({ error: 'Enter the budget in dollars, like 10.' })
+    .min(0, 'The budget can’t be negative.')
+    .max(AI_BUDGET_MAX_USD, `Keep the budget at $${AI_BUDGET_MAX_USD} or less.`),
+});
+export type TeamSettingsInput = z.input<typeof teamSettingsInput>;
+
+export const exportQuery = z.object({
+  part: z.enum(EXPORT_PARTS),
+  /** Resume after this row key (the previous page's `next`). */
+  after: z.string().max(200).optional(),
+});
 
 // ---------- v1 import (records arrive already mapped to v2 columns) ----------
 

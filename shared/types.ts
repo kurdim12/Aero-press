@@ -352,6 +352,8 @@ export interface TodaySession {
 
 export interface TodayResponse {
   session: TodaySession | null;
+  /** True when the team has fewer than two recipes, so there is nothing to duel yet (no AI call). */
+  needs_recipes?: boolean;
 }
 
 export interface DuelRead {
@@ -395,4 +397,122 @@ export interface AiUsage {
   month_spend_usd: number;
   cap_usd: number;
   calls: number;
+}
+
+// ---------- Board (monitoring dashboard) ----------
+
+/** A recipe as the Board shows it: who made it and how it's ranked. */
+export interface BoardRecipe {
+  id: string;
+  display_code: string;
+  name: string | null;
+  owner_name: string;
+  elo: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  duels: number;
+}
+
+export interface LeaderboardEntry {
+  member_id: string;
+  name: string;
+  initials: string;
+  /** Their highest-rated recipe with at least one duel. */
+  recipe: BoardRecipe | null;
+}
+
+export interface EloSeries {
+  recipe: BoardRecipe;
+  /** Elo after each duel, oldest first. */
+  points: { t: number; elo: number }[];
+}
+
+export interface WeeklyScore {
+  /** Monday of the week, YYYY-MM-DD. */
+  week: string;
+  avg_overall: number;
+  brews: number;
+}
+
+export interface ConsistencyRow {
+  recipe: BoardRecipe;
+  brews: number;
+  tds_sd: number | null;
+  overall_sd: number | null;
+  unreliable: boolean;
+}
+
+export interface VolumeMember {
+  member_id: string;
+  name: string;
+  initials: string;
+  /** One count per day in `volume.days`. */
+  brews: number[];
+  duels: number[];
+  /** Last brew or duel, and whole days since then. */
+  last_active: number | null;
+  days_since: number | null;
+}
+
+export const READINESS_KEYS = ['locked', 'wins', 'beans', 'timed', 'comp_duel'] as const;
+export type ReadinessKey = (typeof READINESS_KEYS)[number];
+
+export interface ReadinessItem {
+  key: ReadinessKey;
+  done: boolean;
+  value: number;
+  target: number;
+  /** False when it can't be checked yet (no competition coffee marked). */
+  applicable: boolean;
+}
+
+export interface BoardResponse {
+  /** null member = the whole team (owner); otherwise one member's own numbers. */
+  view: { member_id: string | null; name: string | null };
+  champ: { name: string | null; date: string | null; days_left: number | null };
+  comp_coffee: { id: string; name: string } | null;
+  locked_recipe: BoardRecipe | null;
+  top_recipe: BoardRecipe | null;
+  leaderboard: LeaderboardEntry[];
+  elo_series: EloSeries[];
+  weekly: WeeklyScore[];
+  consistency: ConsistencyRow[];
+  volume: { days: string[]; members: VolumeMember[] };
+  readiness: ReadinessItem[];
+  ai: AiUsage;
+}
+
+/** The team's settings, as Settings shows them (everyone reads; the owner changes them). */
+export interface TeamSettings {
+  name: string;
+  champ_name: string | null;
+  champ_date: string | null;
+  comp_coffee_notes: string | null;
+  ai_monthly_budget_usd: number;
+}
+
+/** Backup parts, one table each, so no single request builds the whole file. */
+export const EXPORT_PARTS = [
+  'team',
+  'members',
+  'beans',
+  'recipes',
+  'brews',
+  'duels',
+  'duel_judges',
+  'duel_votes',
+  'readiness_reports',
+  'ai_calls',
+] as const;
+export type ExportPart = (typeof EXPORT_PARTS)[number];
+/** Rows per backup page (duel-owned tables: duels per page). */
+export const EXPORT_PAGE = 500;
+
+/** One page of one table of the owner's backup (GET /api/export). */
+export interface ExportPage {
+  part: ExportPart;
+  rows: Record<string, unknown>[];
+  /** Pass as `after` for the next page; null when this was the last. */
+  next: string | null;
 }

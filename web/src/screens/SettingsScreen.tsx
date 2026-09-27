@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { OkResponse } from '../../../shared/types';
 import { api, errorMessage } from '../api';
+import { downloadBackup } from '../board';
 import { FormError, PinField } from '../components/Fields';
 import { ChevronIcon } from '../components/Icons';
 import { Sheet } from '../components/Sheet';
 import { TopBar } from '../components/TopBar';
+import { useFlash } from '../flash';
 import { useQueuedBrews } from '../offline/brewSync';
 import { useOnline } from '../offline/useOnline';
 import { clearSessionData, forgetMember, membersQuery, useIsOwner, useMe } from '../session';
@@ -27,6 +29,18 @@ export function SettingsScreen() {
   const unsynced = useQueuedBrews(me.member.id).length;
   const online = useOnline();
   const activeCount = members.data?.members.filter((m) => m.active).length;
+  const flash = useFlash();
+  const [backupState, setBackupState] = useState<{ busy: boolean; line: string | null; error: string | null }>({ busy: false, line: null, error: null });
+
+  const backup = async () => {
+    setBackupState({ busy: true, line: null, error: null });
+    try {
+      const name = await downloadBackup((part, rows) => setBackupState((b) => ({ ...b, line: strings.backup.working(part.replace('_', ' '), rows) })));
+      setBackupState({ busy: false, line: strings.backup.done(name), error: null });
+    } catch (err) {
+      setBackupState({ busy: false, line: null, error: errorMessage(err) });
+    }
+  };
 
   const signOut = useMutation({
     mutationFn: () => api<OkResponse>('POST', '/api/auth/logout'),
@@ -81,10 +95,27 @@ export function SettingsScreen() {
           </div>
         </section>
 
+        {flash && (
+          <p className="notice" role="status" style={{ marginTop: 8 }}>
+            {flash}
+          </p>
+        )}
+
         {isOwner && (
           <section className="section">
             <span className="eyebrow">{s.team}</span>
             <ul className="rows">
+              <li>
+                <Link href="/settings/team" className="row">
+                  <span className="row-main">
+                    <span className="row-title">{strings.teamSettings.row}</span>
+                    <span className="row-sub">{strings.teamSettings.rowSub}</span>
+                  </span>
+                  <span className="row-trail">
+                    <ChevronIcon />
+                  </span>
+                </Link>
+              </li>
               <li>
                 <Link href="/settings/members" className="row">
                   <span className="row-main">
@@ -117,7 +148,25 @@ export function SettingsScreen() {
                   </span>
                 </button>
               </li>
+              <li>
+                <button type="button" className="row" onClick={() => void backup()} disabled={backupState.busy || !online}>
+                  <span className="row-main">
+                    <span className="row-title">{strings.backup.title}</span>
+                    <span className="row-sub" aria-live="polite">
+                      {backupState.line ?? (online ? strings.backup.sub : strings.backup.offline)}
+                    </span>
+                  </span>
+                  <span className="row-trail">
+                    <ChevronIcon />
+                  </span>
+                </button>
+              </li>
             </ul>
+            {backupState.error && (
+              <div style={{ marginTop: 12 }}>
+                <FormError>{backupState.error}</FormError>
+              </div>
+            )}
             {notice && (
               <p className="notice" role="status" style={{ marginTop: 12 }}>
                 {notice}

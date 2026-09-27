@@ -213,6 +213,16 @@ describe('coach: readiness, today and ask', () => {
     expect((await owner.get<{ report: ReadinessReport }>('/api/coach/readiness')).body.report.id).toBe(made.id);
   });
 
+  it('skips today’s session (and the AI call) until the team has two recipes', async () => {
+    const { owner } = await setupTeam();
+    await owner.post('/api/recipes', recipeBody({ name: 'Only one' }));
+    const res = await owner.post<TodayResponse>('/api/coach/today');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ session: null, needs_recipes: true });
+    expect(requests).toHaveLength(0);
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM coach_cache').first<{ n: number }>())?.n).toBe(0);
+  });
+
   it('writes today’s session once per member per day', async () => {
     const { owner, r1, r2 } = await teamWithRecipes();
     expect((await owner.get<TodayResponse>('/api/coach/today')).body.session).toBeNull();

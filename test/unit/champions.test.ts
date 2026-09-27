@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHAMPION_RECIPES } from '../../shared/champions';
+import { CHAMPION_SUMMARY } from '../../shared/championSummary';
 import { planBrew } from '../../shared/phases';
 import { recipeInput } from '../../shared/schemas';
 import { strings } from '../../web/src/strings';
@@ -18,6 +19,11 @@ describe('champion recipes', () => {
     }
     const order = CHAMPION_RECIPES.map((e) => e.year * 10 - e.place);
     expect(order).toEqual([...order].sort((a, b) => b - a));
+  });
+
+  it('matches the summary the Recipes tab shows', () => {
+    const years = CHAMPION_RECIPES.filter((e) => e.recipe).map((e) => e.year);
+    expect(CHAMPION_SUMMARY).toEqual({ recipes: years.length, from: Math.min(...years), to: Math.max(...years) });
   });
 
   it('has a winner for every year from 2008 on, except 2020', () => {

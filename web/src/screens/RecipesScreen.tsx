@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useSearch } from 'wouter';
-import { CHAMPION_RECIPES } from '../../../shared/champions';
+import { CHAMPION_SUMMARY } from '../../../shared/championSummary';
 import type { RecipeRow } from '../../../shared/types';
 import { errorMessage } from '../api';
 import { FormError } from '../components/Fields';
@@ -109,13 +109,12 @@ export function RecipesScreen() {
 }
 
 function ChampionsLink() {
-  const years = CHAMPION_RECIPES.filter((e) => e.recipe).map((e) => e.year);
   return (
     <Link href="/recipes/champions" className="row feature">
       <span className="row-main">
         <span className="row-title">{strings.champions.open}</span>
         <span className="row-sub">
-          {strings.champions.count(years.length, Math.min(...years), Math.max(...years))}
+          {strings.champions.count(CHAMPION_SUMMARY.recipes, CHAMPION_SUMMARY.from, CHAMPION_SUMMARY.to)}
         </span>
       </span>
       <span className="chevron" aria-hidden="true">

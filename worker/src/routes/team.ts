@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
-import type { MeResponse, OkResponse } from '../../../shared/types';
-import { setPinInput } from '../../../shared/schemas';
+import type { MeResponse, OkResponse, TeamSettings } from '../../../shared/types';
+import { setPinInput, teamSettingsInput } from '../../../shared/schemas';
 import { requireMember, requireOwner } from '../middleware/auth';
-import { ApiError } from '../lib/errors';
+import { ApiError, notFound } from '../lib/errors';
 import { hashPin, verifyPin } from '../lib/crypto';
 import { meResponse } from '../lib/members';
 import { readJson } from '../lib/validate';
@@ -15,6 +15,30 @@ meRoutes.get('/', async (c) => c.json<MeResponse>(await meResponse(c.env.DB, c.g
 
 export const teamRoutes = new Hono<AppEnv>();
 teamRoutes.use('*', requireMember);
+
+const SETTINGS_SELECT = 'SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd FROM teams WHERE id = ?';
+
+/** Team name, championship details and the AI budget. Everyone may read them. */
+teamRoutes.get('/', async (c) => {
+  const row = await c.env.DB.prepare(SETTINGS_SELECT).bind(c.get('member').team_id).first<TeamSettings>();
+  if (!row) throw notFound('team');
+  return c.json<TeamSettings>(row);
+});
+
+/** Owner saves the team settings (the whole form each time). */
+teamRoutes.put('/', requireOwner, async (c) => {
+  const input = await readJson(c, teamSettingsInput);
+  const me = c.get('member');
+  const budget = Math.round(input.ai_monthly_budget_usd * 100) / 100;
+  const db = c.env.DB;
+  await db
+    .prepare('UPDATE teams SET name = ?, champ_name = ?, champ_date = ?, comp_coffee_notes = ?, ai_monthly_budget_usd = ? WHERE id = ?')
+    .bind(input.name, input.champ_name ?? null, input.champ_date ?? null, input.comp_coffee_notes ?? null, budget, me.team_id)
+    .run();
+  const row = await db.prepare(SETTINGS_SELECT).bind(me.team_id).first<TeamSettings>();
+  if (!row) throw notFound('team');
+  return c.json<TeamSettings>(row);
+});
 
 /** Owner changes the team PIN. Existing sessions stay signed in. */
 teamRoutes.put('/pin', requireOwner, async (c) => {

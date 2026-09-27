@@ -6,7 +6,15 @@ import react from '@vitejs/plugin-react';
 const fromRoot = (path: string) => new URL(path, import.meta.url);
 
 /** Files in web/public that belong to the app shell. */
-const PUBLIC_SHELL = ['theme-init.js', 'favicon.svg'];
+const PUBLIC_SHELL = [
+  'theme-init.js',
+  'favicon.svg',
+  'manifest.webmanifest',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
+  'icons/maskable-512.png',
+  'icons/apple-touch-icon.png',
+];
 
 /**
  * Emits sw.js with the list of built files to precache, so the app opens offline.

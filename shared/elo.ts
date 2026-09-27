@@ -26,9 +26,13 @@ export const newStanding = (): Standing => ({ elo: ELO_START, wins: 0, losses: 0
 /**
  * Replay duels oldest-first (by revealed_at, then id so ties are stable) and return each
  * recipe's rating and win-loss-draw record. A draw scores 0.5. With `beanId`, only duels
- * brewed on that bean count. Duels whose winner is neither recipe are ignored.
+ * brewed on that bean count. Duels whose winner is neither recipe are ignored. `onDuel` sees
+ * both recipes' standings right after each duel counts (for Elo over time).
  */
-export function replayElo(duels: readonly EloDuel[], options: { beanId?: string | null } = {}): Map<string, Standing> {
+export function replayElo(
+  duels: readonly EloDuel[],
+  options: { beanId?: string | null; onDuel?: (duel: EloDuel, x: Standing, y: Standing) => void } = {},
+): Map<string, Standing> {
   const table = new Map<string, Standing>();
   const standing = (id: string) => {
     let s = table.get(id);
@@ -70,6 +74,7 @@ export function replayElo(duels: readonly EloDuel[], options: { beanId?: string 
       x.draws++;
       y.draws++;
     }
+    options.onDuel?.(d, x, y);
   }
   return table;
 }

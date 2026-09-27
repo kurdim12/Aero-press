@@ -171,6 +171,26 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
     <name>`, and the notes carry the sources).
   - A unit test validates every entry against `recipeInput`.
 
+- Board (phase 6), `GET /api/board[?member=<id>]`:
+  - The owner gets the team; `?member` gives one member's own board. Baristas always get their
+    own and get 403 for anyone else's.
+  - Aggregates (weekly averages, spreads, per-day counts, last activity) run in D1 SQL, and Elo
+    over time replays duels through `replayElo`'s `onDuel` hook. Thresholds and date maths are
+    in `shared/dashboard.ts` (Amman time).
+  - Readiness uses the locked recipe: its wins, the distinct beans across its brews and duels,
+    and its latest timed brews. The competition-coffee duel check counts any duel on that bean.
+  - Recharts sits in a lazy chunk (`components/BoardCharts.tsx`), and so do the champion screens
+    with their data.
+  - The Today card also shows on the Board. It stays silent there (`quiet`), and the server
+    doesn't call the AI until the team has two recipes.
+- Settings: `GET/PUT /api/team` (everyone reads, the owner saves; the budget is rounded to cents).
+  Backup: `GET /api/export?part=&after=` for the owner, one table per request in pages of 500,
+  never PIN hashes or sessions. The browser builds the single JSON file.
+- PWA: `web/public/manifest.webmanifest`, icons in `web/public/icons` (rendered from the favicon
+  design). The manifest and icons are in the service worker's precache list (`vite.config.ts`).
+- The web app must not import runtime values from `shared/schemas.ts` (that would pull zod into
+  the bundle). Shared constants live in `shared/types.ts`.
+
 ## Phase status
 1. Skeleton and auth: built (checkpoint 1, approved).
 2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2, approved).
@@ -178,4 +198,5 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
 4. Duels, Elo, leaderboard: built. The user asked to finish all remaining phases without stopping,
    plus a library of World AeroPress Championship recipes.
 5. AI coach, quick log, reads: built.
-6. Dashboard, settings, export, PWA install: next.
+6. Dashboard, settings, export, PWA install: built.
+7. Owner README, final checks: next.
