@@ -17,6 +17,7 @@ import {
 } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
 import { formatNumber, formatRatio, formatSeconds, parseNumber, parseTime } from '../format';
+import { type RecipeDraft, peekRecipeDraft } from '../drafts';
 import { beansQuery, invalidateLibrary, recipeQuery } from '../queries';
 import { strings } from '../strings';
 
@@ -73,6 +74,23 @@ function toValues(r: RecipeFields): Values {
   return v;
 }
 
+/** A coach experiment or champion recipe, laid over the starting values. */
+function withDraft(base: Values, draft: RecipeDraft | null): Values {
+  if (!draft) return base;
+  const v: Values = { ...base };
+  const c = draft.changes;
+  if (c.method) v.method = c.method;
+  if (c.bean_id !== undefined) v.bean_id = c.bean_id ?? '';
+  for (const k of TEXT_KEYS) if (c[k] !== undefined) v[k] = c[k] ?? '';
+  for (const k of NUMBER_KEYS) if (c[k] !== undefined) v[k] = formatNumber(c[k]);
+  for (const k of TIME_KEYS) if (c[k] !== undefined) v[k] = formatSeconds(c[k]);
+  if (draft.note) v.notes = [draft.note, v.notes].filter(Boolean).join('\n\n');
+  return v;
+}
+
+/** Name and notes don't change the cup, so they don't count toward "one or two changes". */
+const BREW_KEYS = (Object.keys(emptyValues) as Key[]).filter((k) => k !== 'name' && k !== 'notes');
+
 /** Turn typed text into the API shape, or report which fields can't be read. */
 function toFields(v: Values): { fields: RecipeFields; errors: Errors } {
   const errors: Errors = {};
@@ -105,9 +123,11 @@ function changedKeys(v: Values, parent: RecipeFields): Set<Key> {
 
 type Mode = { kind: 'new' } | { kind: 'clone'; parentId: string } | { kind: 'edit'; id: string };
 
-/** /recipes/new, /recipes/new?from=<id> (clone and tweak), /recipes/:id/edit */
+/** /recipes/new, /recipes/new?from=<id> (clone and tweak), /recipes/:id/edit; &draft=<key> prefills. */
 export function RecipeFormScreen({ editId }: { editId?: string }) {
-  const from = new URLSearchParams(useSearch()).get('from');
+  const params = new URLSearchParams(useSearch());
+  const from = params.get('from');
+  const draftKey = editId ? null : params.get('draft');
   const mode: Mode = editId ? { kind: 'edit', id: editId } : from ? { kind: 'clone', parentId: from } : { kind: 'new' };
   const sourceId = mode.kind === 'edit' ? mode.id : mode.kind === 'clone' ? mode.parentId : '';
   const source = useQuery({ ...recipeQuery(sourceId), enabled: Boolean(sourceId) });
@@ -128,14 +148,14 @@ export function RecipeFormScreen({ editId }: { editId?: string }) {
       </>
     );
   }
-  return <RecipeForm key={`${mode.kind}:${sourceId}`} mode={mode} source={source.data?.recipe} />;
+  return <RecipeForm key={`${mode.kind}:${sourceId}:${draftKey ?? ''}`} mode={mode} source={source.data?.recipe} draft={peekRecipeDraft(draftKey)} />;
 }
 
-function RecipeForm({ mode, source }: { mode: Mode; source?: RecipeRow }) {
+function RecipeForm({ mode, source, draft }: { mode: Mode; source?: RecipeRow; draft: RecipeDraft | null }) {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const beans = useQuery(beansQuery);
-  const [values, setValues] = useState<Values>(source ? toValues(source) : emptyValues);
+  const [values, setValues] = useState<Values>(() => withDraft(source ? toValues(source) : emptyValues, draft));
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   useRevealFirstError(errors);
@@ -149,6 +169,7 @@ function RecipeForm({ mode, source }: { mode: Mode; source?: RecipeRow }) {
   const parent = mode.kind === 'clone' ? source : undefined;
   const changed = parent ? changedKeys(values, parent) : new Set<Key>();
   const isChanged = (k: Key) => changed.has(k);
+  const brewChanges = BREW_KEYS.filter((k) => changed.has(k)).length;
 
   const save = useMutation({
     mutationFn: (fields: RecipeFields) => {
@@ -311,9 +332,9 @@ function RecipeForm({ mode, source }: { mode: Mode; source?: RecipeRow }) {
 
           <div className="save-bar">
             {parent && (
-              <span className={`change-count${changed.size > 2 ? ' warn' : ''}`} role="status">
-                {t.changes(changed.size, parent.display_code)}
-                {changed.size > 2 && <span>{t.tooManyChanges}</span>}
+              <span className={`change-count${brewChanges > 2 ? ' warn' : ''}`} role="status">
+                {t.changes(brewChanges, parent.display_code)}
+                {brewChanges > 2 && <span>{t.tooManyChanges}</span>}
               </span>
             )}
             {formError && <FormError>{formError}</FormError>}

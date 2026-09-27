@@ -208,6 +208,12 @@ function Brews({ brews }: { brews: BrewRow[] }) {
                 <span className="row-title num">{numbers.join(' · ') || strings.common.none}</span>
                 <span className="row-sub">{context.join(' · ')}</span>
                 {b.notes && <span className="row-sub">{b.notes}</span>}
+                {b.ai_read && (
+                  <span className="row-sub coach-line">
+                    <strong>{strings.coach.brewRead}: </strong>
+                    {b.ai_read}
+                  </span>
+                )}
               </span>
             </li>
           );

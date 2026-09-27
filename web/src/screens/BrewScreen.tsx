@@ -56,6 +56,11 @@ export function BrewScreen() {
             </Link>
           )}
           <PendingBrews />
+          {list.length > 0 && (
+            <Link href="/brew/quick" className="btn secondary block">
+              {strings.quickLog.open}
+            </Link>
+          )}
         </div>
 
         {recipes.isError && !recipes.data && (

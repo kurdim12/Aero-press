@@ -5,9 +5,9 @@ rank recipes with blind head-to-head duels (Elo), monitor progress, and get AI c
 
 One Cloudflare Worker serves both the API (Hono + D1) and the web app (Vite + React PWA).
 
-> Build status: **Phase 4 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
+> Build status: **Phase 5 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
 > compare, lineage and locking; v1 import; brew timer, brew log with extraction yield, offline brewing;
-> blind multi-phone duels with a leaderboard).
+> blind multi-phone duels with a leaderboard; the AI coach, quick log by voice, and reads after brews and duels).
 > The owner's one-page guide (add a member, reset a PIN, AI budget, backups) arrives with the deploy in phase 7.
 
 ## Run it on your computer
@@ -64,6 +64,21 @@ Right after the first deploy, open the site and complete the team setup. Until s
 setup screen is open to anyone who has the link.
 
 To deploy from your own computer instead, run `npx wrangler login` and then `npm run deploy`.
+
+### Turn on the AI coach
+
+The coach runs inside the Worker with your Anthropic API key. The key stays in Cloudflare and never
+reaches anyone's phone.
+
+1. Create a key at [console.anthropic.com](https://console.anthropic.com) (Settings › API keys).
+2. In Cloudflare, open **Workers & Pages › aero-press › Settings › Variables and Secrets**, choose
+   **Add**, type **Secret**, name `ANTHROPIC_API_KEY`, paste the key, and deploy. (From your
+   computer instead: `npx wrangler secret put ANTHROPIC_API_KEY`.)
+3. Open the **Coach** tab. It shows this month's AI spend against the team's monthly budget
+   ($10 to start). Once the budget is used up, the coach stops until next month or until the
+   owner raises it.
+
+For the coach on your computer, copy `.dev.vars.example` to `.dev.vars` and put the key there.
 
 ### Start over with an empty database
 

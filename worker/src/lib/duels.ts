@@ -1,7 +1,7 @@
 // Blind duels: loading, the per-viewer view, and the reveal.
 // Recipe identities leave the server only through `toDuelView`, which gives them to the creator
 // (who pours) and, after the reveal, to everyone. Judges never get them before the reveal.
-import type { DuelChoice, DuelJudge, DuelRecipe, DuelStatus, DuelView } from '../../../shared/types';
+import type { DuelChoice, DuelJudge, DuelRead, DuelRecipe, DuelStatus, DuelView } from '../../../shared/types';
 import { initialsOf } from '../../../shared/initials';
 import type { AuthMember } from '../env';
 import { notFound } from './errors';
@@ -77,6 +77,20 @@ export async function listDuelRows(db: D1Database, teamId: string, recentLimit =
 }
 
 export const isFinished = (status: DuelStatus) => status === 'revealed' || status === 'cancelled';
+
+/** Marks a duel read being written by one phone, so the others wait instead of paying twice. */
+export const READ_PENDING = 'pending:';
+
+/** ai_read holds the coach's read as JSON (older data: plain text), or a pending marker. */
+export function parseDuelRead(stored: string | null): DuelRead | null {
+  if (!stored || stored.startsWith(READ_PENDING)) return null;
+  if (!stored.startsWith('{')) return { read: stored, next_test: null };
+  try {
+    return JSON.parse(stored) as DuelRead;
+  } catch {
+    return null;
+  }
+}
 
 /** Who may see which recipe is X and which is Y. */
 export function canSeeRecipes(duel: Pick<DuelDbRow, 'status' | 'created_by'>, viewerId: string): boolean {
@@ -169,7 +183,7 @@ export function toDuelView(
     rematch_id: d.rematch_id,
     // Notes can name the recipes ("R3 vs R5, hotter"), so they follow the same rule.
     notes: showRecipes ? d.notes : null,
-    ai_read: revealed ? d.ai_read : null,
+    ai_read: revealed ? parseDuelRead(d.ai_read) : null,
     you: {
       is_creator: d.created_by === viewer.id,
       is_judge: Boolean(mine),

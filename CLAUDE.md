@@ -141,8 +141,32 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
     4 s while open, which is how judges find a new duel or a rematch.
   - The leaderboard (on the Duel tab) is computed in the browser from the recipes list.
 
+- AI (phase 5), all in `worker/src/ai/`:
+  - Every call checks the monthly budget first (month-to-date `SUM(cost_usd)` in Amman time, the
+    spec's exact message on 402), then logs tokens and cost in `ai_calls`.
+  - JSON replies come from prompt instructions, checked with zod (`shared/schemas.ts`), with one
+    retry that quotes the error. Structured outputs aren't used. Sonnet 5 takes
+    `output_config.effort`, with no temperature and no prefill.
+  - Parent codes resolve to team recipes. A "change" to the parent's own value is dropped.
+  - Today's session is cached per member per day in `coach_cache`. Readiness reports are stored.
+    Ask anything streams the SSE straight through, and a meter reads the usage.
+  - Quick log (Haiku) returns only ids from the team's lists, else null. The brew log then opens
+    prefilled through an in-memory draft (`web/src/drafts.ts`, `draft` URL token).
+  - Reads:
+    - Brew read: Haiku, in `waitUntil` after the save. The log screen refetches the recipe after 6 s.
+    - Duel read: Sonnet. The first phone to ask claims it (`ai_read = 'pending:<ms>'`, stale after
+      90 s) and the others get 202 and ask again every 3 s. It's automatic for a day after the
+      reveal; older duels get a button.
+  - Tests swap the network through `aiTransport`. Local click-throughs can use the same hook
+    with a stand-in server; real calls need `ANTHROPIC_API_KEY`.
+  - Prices: Sonnet 5 at $2 / $10 per million tokens (the introductory price is now permanent),
+    Haiku 4.5 at $1 / $5.
+
 ## Phase status
 1. Skeleton and auth: built (checkpoint 1, approved).
 2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2, approved).
 3. Brew mode and log (timer, offline queue, manual log, EY): built (checkpoint 3, approved).
-4. Duels, Elo, leaderboard: built. The user asked to finish all remaining phases without stopping.
+4. Duels, Elo, leaderboard: built. The user asked to finish all remaining phases without stopping,
+   plus a library of World AeroPress Championship recipes.
+5. AI coach, quick log, reads: built.
+6. Dashboard, settings, export, PWA install: next.

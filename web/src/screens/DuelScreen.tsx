@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
-import type { DuelChoice, DuelRecipe, DuelView } from '../../../shared/types';
-import { api, errorMessage } from '../api';
+import type { DuelChoice, DuelReadResponse, DuelRecipe, DuelView } from '../../../shared/types';
+import { aiUsageQuery } from '../ai';
+import { ApiError, api, errorMessage } from '../api';
+import { ExperimentCard } from '../components/ExperimentCard';
 import { FormError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
 import { useOnline } from '../offline/useOnline';
-import { duelQuery, invalidateLibrary, isDuelFinished } from '../queries';
+import { beansQuery, duelQuery, invalidateLibrary, isDuelFinished, recipesQuery } from '../queries';
 import { strings } from '../strings';
 
 const d = strings.duel;
+const c = strings.coach;
 const POLL_MS = 2000;
+/** The coach reads a duel by itself for a day after the reveal; older duels get a button, to spare the budget. */
+const READ_AUTO_MS = 24 * 3600_000;
+/** Another phone is writing the read: ask again this often. */
+const READ_POLL_MS = 3000;
 
 /** /duel/:id — one duel, live on every phone: polls every 2 s until the reveal or a cancel. */
 export function DuelScreen({ id }: { id: string }) {
@@ -69,7 +76,10 @@ export function DuelScreen({ id }: { id: string }) {
           <>
             <DuelHeader view={view} />
             {view.status === 'revealed' ? (
-              <Reveal view={view} busy={busy} onRematch={() => void act('rematch')} />
+              <>
+                <Reveal view={view} busy={busy} onRematch={() => void act('rematch')} />
+                <DuelRead view={view} />
+              </>
             ) : view.status === 'cancelled' ? (
               <p className="notice" style={{ marginTop: 16 }}>
                 {d.cancelledBody}
@@ -259,6 +269,68 @@ function Reveal({ view, busy, onRematch }: { view: DuelView; busy: boolean; onRe
           </>
         )
       )}
+    </section>
+  );
+}
+
+/** The coach's read of a revealed duel and the next test it suggests. The first phone to ask writes it. */
+function DuelRead({ view }: { view: DuelView }) {
+  const qc = useQueryClient();
+  const online = useOnline();
+  const usage = useQuery(aiUsageQuery);
+  const recipes = useQuery(recipesQuery('all', null)).data?.recipes ?? [];
+  const beans = useQuery(beansQuery).data?.beans ?? [];
+  const fresh = view.revealed_at !== null && Date.now() - view.revealed_at < READ_AUTO_MS;
+  const [asked, setAsked] = useState(fresh);
+  const read = useQuery({
+    queryKey: ['duel-read', view.id],
+    queryFn: async () => {
+      const res = await api<DuelReadResponse>('POST', `/api/duels/${encodeURIComponent(view.id)}/read`, {});
+      if (res.read) {
+        qc.setQueryData<DuelView>(['duel', view.id], (old) => (old ? { ...old, ai_read: res.read } : old));
+        void qc.invalidateQueries({ queryKey: ['ai-usage'] });
+      }
+      return res;
+    },
+    enabled: asked && online && !view.ai_read && usage.data?.configured !== false,
+    refetchInterval: (q) => (q.state.data?.pending ? READ_POLL_MS : false),
+    refetchOnWindowFocus: false,
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  const result = view.ai_read ?? read.data?.read ?? null;
+  if (!result && usage.data?.configured === false) return null;
+  if (read.error instanceof ApiError && read.error.code === 'ai_not_configured') return null;
+  return (
+    <section className="section">
+      <span className="eyebrow">{c.duelRead}</span>
+      {result ? (
+        <>
+          <div className="coach-card">
+            <p className="coach-read">{result.read}</p>
+          </div>
+          {result.next_test && (
+            <>
+              <h3 className="subhead">{c.nextTest}</h3>
+              <ExperimentCard experiment={result.next_test} recipes={recipes} beans={beans} action={c.createThis} />
+            </>
+          )}
+        </>
+      ) : read.isError ? (
+        <div className="btn-stack">
+          <FormError>{errorMessage(read.error)}</FormError>
+          <button type="button" className="btn secondary block" onClick={() => void read.refetch()}>
+            {strings.common.retry}
+          </button>
+        </div>
+      ) : !asked ? (
+        <button type="button" className="btn secondary block" disabled={!online} onClick={() => setAsked(true)}>
+          {c.readDuel}
+        </button>
+      ) : online ? (
+        <p className="muted">{c.duelReadLoading}</p>
+      ) : null}
     </section>
   );
 }

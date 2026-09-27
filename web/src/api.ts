@@ -73,13 +73,16 @@ export async function api<T>(
     data = null;
   }
 
-  if (!res.ok) {
-    const err = (data as ApiErrorBody | null)?.error;
-    const apiError = new ApiError(res.status, err?.code ?? `http_${res.status}`, messageFor(res.status, err), err ?? null);
-    if (apiError.code === 'not_signed_in') onSignedOut?.();
-    throw apiError;
-  }
+  if (!res.ok) throw apiErrorFrom(res.status, data);
   return data as T;
+}
+
+/** The error for a failed response body, worded for the user (and a "signed out" sends them to sign in). */
+export function apiErrorFrom(status: number, data: unknown): ApiError {
+  const err = (data as ApiErrorBody | null)?.error;
+  const apiError = new ApiError(status, err?.code ?? `http_${status}`, messageFor(status, err), err ?? null);
+  if (apiError.code === 'not_signed_in') onSignedOut?.();
+  return apiError;
 }
 
 export function errorMessage(err: unknown): string {

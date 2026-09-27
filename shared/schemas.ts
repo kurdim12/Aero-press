@@ -2,7 +2,7 @@
 // only imports their inferred types.
 import { z } from 'zod';
 import { BREW_LIMITS } from './limits';
-import { DUEL_CHOICES, IMPORT_CHUNK_MAX, METHODS } from './types';
+import { DUEL_CHOICES, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
 
@@ -324,3 +324,118 @@ export const duelVoteInput = z.object({
   choice: z.enum(DUEL_CHOICES, { error: 'Vote X, Y or can’t separate.' }),
 });
 export type DuelVoteInput = z.input<typeof duelVoteInput>;
+
+// ---------- AI coach: inputs ----------
+
+export const planInput = z.object({
+  /** Optional recipe to build the session around. */
+  recipe_id: id.nullable().optional(),
+  focus: text(300),
+});
+
+export const adaptInput = z.object({
+  bean_id: id,
+  recipe_id: id,
+});
+
+export const askInput = z.object({
+  question: z.string({ error: 'Type a question.' }).trim().min(1, 'Type a question.').max(1000, 'Keep the question under 1000 characters.'),
+});
+
+export const quickLogInput = z.object({
+  text: z.string({ error: 'Type or say the brew first.' }).trim().min(1, 'Type or say the brew first.').max(1000, 'Keep it under 1000 characters.'),
+  /** The recipe the log was opened from, as a hint. */
+  recipe_id: id.optional(),
+});
+
+// ---------- AI coach: model output (validated in the Worker, retried once if invalid) ----------
+
+// The model sometimes writes 88 as "88" or a grind of 22 as a number; accept those, nothing else.
+const numeric = (v: unknown) => (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : v);
+const textual = (v: unknown) => (typeof v === 'number' ? String(v) : v);
+const aiText = (max: number) => z.string().trim().min(1).max(max);
+const changeText = (max: number) => z.preprocess(textual, z.string().trim().max(max).nullable());
+const changeNumber = (min: number, max: number) => z.preprocess(numeric, z.number().min(min).max(max).nullable());
+const changeSeconds = (max: number) => z.preprocess(numeric, z.number().int().min(0).max(max).nullable());
+
+/** The recipe columns an experiment may change. Unknown keys are dropped. */
+export const recipeChanges = z
+  .object({
+    name: changeText(80),
+    bean_id: changeText(100),
+    method: z.enum(METHODS),
+    filter: changeText(60),
+    dose_g: changeNumber(1, 100),
+    water_g: changeNumber(1, 1000),
+    temp_c: changeNumber(40, 100),
+    grinder: changeText(60),
+    grind_setting: changeText(40),
+    water_recipe: changeText(120),
+    bloom_water_g: changeNumber(0, 1000),
+    bloom_ends_s: changeSeconds(600),
+    agitation: changeText(200),
+    press_starts_s: changeSeconds(900),
+    press_duration_s: changeSeconds(600),
+    bypass_g: changeNumber(0, 1000),
+    bypass_temp: changeText(40),
+    other_steps: changeText(2000),
+    notes: changeText(4000),
+  })
+  .partial();
+
+export const RECIPE_CHANGE_KEYS = Object.keys(recipeChanges.shape);
+
+export const experimentOutput = z.object({
+  title: aiText(120),
+  parent: z.preprocess(textual, z.string().trim().max(40).nullable()),
+  changes: recipeChanges,
+  why: aiText(800),
+  listenFor: aiText(600),
+});
+
+export const experimentsOutput = z.object({
+  read: aiText(3000),
+  experiments: z.array(experimentOutput).length(3, 'Return exactly 3 experiments.'),
+});
+
+export const readinessOutput = z.object({
+  verdict: z.enum(READINESS_VERDICTS),
+  biggestRisk: aiText(800),
+  fixes: z.array(aiText(600)).length(3, 'Return exactly 3 fixes.'),
+  evidence: aiText(2000),
+});
+
+export const todayOutput = z.object({
+  summary: aiText(600),
+  duels: z
+    .array(z.object({ a: aiText(40), b: aiText(40), why: aiText(400) }))
+    .max(3, 'Suggest at most 3 duels.'),
+});
+
+export const duelReadOutput = z.object({
+  read: aiText(1500),
+  next_test: experimentOutput.nullable(),
+});
+
+// A quick log never fails on one odd field: anything unreadable becomes null ("leave it empty").
+const maybe = <T extends z.ZodType>(schema: T) => z.preprocess(numeric, schema.nullable()).catch(null);
+const maybeText = (max: number) => z.preprocess(textual, z.string().trim().max(max).nullable()).catch(null);
+const match = z
+  .object({ id: z.string().max(100).nullable(), confidence: z.preprocess(numeric, z.number().min(0).max(1)) })
+  .catch({ id: null, confidence: 0 });
+
+export const quickLogOutput = z.object({
+  grind_used: maybeText(40),
+  total_time_s: maybe(z.number().int().min(1).max(BREW_LIMITS.total_time_s.max)),
+  tds_pct: maybe(z.number().min(BREW_LIMITS.tds_pct.min).max(BREW_LIMITS.tds_pct.max)),
+  beverage_g: maybe(z.number().min(BREW_LIMITS.beverage_g.min).max(BREW_LIMITS.beverage_g.max)),
+  sweetness: maybe(z.number().min(1).max(10).multipleOf(0.5)),
+  acidity: maybe(z.number().min(1).max(10).multipleOf(0.5)),
+  body: maybe(z.number().min(1).max(10).multipleOf(0.5)),
+  clarity: maybe(z.number().min(1).max(10).multipleOf(0.5)),
+  finish: maybe(z.number().min(1).max(10).multipleOf(0.5)),
+  overall: maybe(z.number().min(1).max(10).multipleOf(0.5)),
+  notes: maybeText(2000),
+  recipeMatch: match,
+  beanMatch: match,
+});

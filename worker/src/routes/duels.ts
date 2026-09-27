@@ -1,9 +1,21 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthMember } from '../env';
-import type { DuelView, DuelsResponse } from '../../../shared/types';
+import type { DuelReadResponse, DuelView, DuelsResponse } from '../../../shared/types';
 import { duelInput, duelVoteInput } from '../../../shared/schemas';
 import { requireMember } from '../middleware/auth';
-import { coinFlip, getDuelRow, isFinished, listDuelRows, loadDuelViews, revealStatement, type DuelDbRow } from '../lib/duels';
+import { aiKey } from '../ai/client';
+import { writeDuelRead } from '../ai/reads';
+import {
+  READ_PENDING,
+  coinFlip,
+  getDuelRow,
+  isFinished,
+  listDuelRows,
+  loadDuelViews,
+  parseDuelRead,
+  revealStatement,
+  type DuelDbRow,
+} from '../lib/duels';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { assertTeamBean } from '../lib/recipes';
@@ -221,4 +233,38 @@ duelRoutes.post('/:id/rematch', async (c) => {
     rematch_of: duel.id,
   });
   return c.json<DuelView>(await viewOf(db, me, rematchId), 201);
+});
+
+/** A claim older than this was abandoned (the phone closed mid-call); someone else may write it. */
+const READ_CLAIM_MS = 90_000;
+
+/**
+ * The coach's read of a revealed duel, written once. The first phone to ask claims it and writes
+ * it; the others get "pending" (202) and ask again a few seconds later.
+ */
+duelRoutes.post('/:id/read', async (c) => {
+  const id = idParam(c, 'duel');
+  const me = c.get('member');
+  const db = c.env.DB;
+  const duel = await getDuelRow(db, me.team_id, id);
+  if (duel.status !== 'revealed') throw new ApiError(409, 'not_revealed', 'The coach reads a duel once it’s revealed.');
+  const existing = parseDuelRead(duel.ai_read);
+  if (existing) return c.json<DuelReadResponse>({ read: existing, pending: false });
+
+  const marker = `${READ_PENDING}${Date.now()}`;
+  const claim = await db
+    .prepare(
+      `UPDATE duels SET ai_read = ? WHERE id = ? AND team_id = ?
+         AND (ai_read IS NULL OR (ai_read LIKE 'pending:%' AND CAST(substr(ai_read, 9) AS INTEGER) < ?))`,
+    )
+    .bind(marker, id, me.team_id, Date.now() - READ_CLAIM_MS)
+    .run();
+  if (claim.meta.changes === 0) return c.json<DuelReadResponse>({ read: null, pending: true }, 202);
+  try {
+    const read = await writeDuelRead({ db, apiKey: aiKey(c.env), member: me }, duel);
+    return c.json<DuelReadResponse>({ read, pending: false });
+  } catch (err) {
+    await db.prepare('UPDATE duels SET ai_read = NULL WHERE id = ? AND team_id = ? AND ai_read = ?').bind(id, me.team_id, marker).run();
+    throw err;
+  }
 });

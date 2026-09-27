@@ -51,5 +51,12 @@ export const MIGRATIONS: Migration[] = [
       "CREATE INDEX idx_readiness_team_created ON readiness_reports (team_id, created_at)",
       "CREATE INDEX idx_readiness_member ON readiness_reports (member_id)"
     ]
+  },
+  {
+    "name": "0002_coach_cache.sql",
+    "queries": [
+      "CREATE TABLE coach_cache (\n  team_id TEXT NOT NULL REFERENCES teams (id),\n  member_id TEXT NOT NULL REFERENCES members (id) ON DELETE CASCADE,\n  kind TEXT NOT NULL,\n  day TEXT NOT NULL,                            \n  result_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (member_id, kind, day)\n)",
+      "CREATE INDEX idx_coach_cache_team_created ON coach_cache (team_id, created_at)"
+    ]
   }
 ];

@@ -283,7 +283,8 @@ export interface DuelView {
   /** The rematch started from this duel, so every phone can follow it. */
   rematch_id: string | null;
   notes: string | null;
-  ai_read: string | null;
+  /** The coach's read of the result, after the reveal. */
+  ai_read: DuelRead | null;
   you: {
     is_creator: boolean;
     is_judge: boolean;
@@ -298,4 +299,100 @@ export interface DuelsResponse {
   active: DuelView[];
   /** Revealed or cancelled, newest first. */
   recent: DuelView[];
+}
+
+// ---------- AI coach ----------
+
+/** Recipe settings an AI experiment changes versus its parent (recipe columns only). */
+export type RecipeChanges = Partial<RecipeFields>;
+
+export interface Experiment {
+  title: string;
+  /** The parent recipe's code as the coach wrote it, and the recipe it matched (if any). */
+  parent: string | null;
+  parent_id: string | null;
+  changes: RecipeChanges;
+  why: string;
+  listenFor: string;
+}
+
+export interface ExperimentsResponse {
+  read: string;
+  experiments: Experiment[];
+}
+
+export const READINESS_VERDICTS = ['ready', 'close', 'not ready'] as const;
+export type ReadinessVerdict = (typeof READINESS_VERDICTS)[number];
+
+export interface ReadinessReport {
+  id: string;
+  member_name: string;
+  verdict: ReadinessVerdict;
+  biggestRisk: string;
+  fixes: string[];
+  evidence: string;
+  created_at: number;
+}
+
+export interface TodayDuel {
+  a: string;
+  b: string;
+  a_id: string | null;
+  b_id: string | null;
+  why: string;
+}
+
+export interface TodaySession {
+  /** YYYY-MM-DD in Amman. */
+  day: string;
+  summary: string;
+  duels: TodayDuel[];
+  created_at: number;
+}
+
+export interface TodayResponse {
+  session: TodaySession | null;
+}
+
+export interface DuelRead {
+  read: string;
+  next_test: Experiment | null;
+}
+
+export interface DuelReadResponse {
+  read: DuelRead | null;
+  /** Another phone is writing it; ask again in a few seconds. */
+  pending: boolean;
+}
+
+export interface QuickLogMatch {
+  id: string | null;
+  confidence: number;
+}
+
+/** A quick log turned into brew-log fields. Anything the text didn't say is null. */
+export interface QuickLogResponse {
+  recipe_id: string | null;
+  bean_id: string | null;
+  grind_used: string | null;
+  total_time_s: number | null;
+  tds_pct: number | null;
+  beverage_g: number | null;
+  sweetness: number | null;
+  acidity: number | null;
+  body: number | null;
+  clarity: number | null;
+  finish: number | null;
+  overall: number | null;
+  notes: string | null;
+  recipeMatch: QuickLogMatch;
+  beanMatch: QuickLogMatch;
+}
+
+export interface AiUsage {
+  /** False until the owner adds the Anthropic API key. */
+  configured: boolean;
+  month_spend_usd: number;
+  cap_usd: number;
+  calls: number;
 }

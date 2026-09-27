@@ -2,6 +2,7 @@ import { applyD1Migrations, reset } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyPendingMigrations } from '../src/lib/schema';
+import { MIGRATIONS } from '../src/migrations.gen';
 import { Client, freshDb } from './helpers';
 
 // A deploy that skipped the migrations: the Worker runs, but its database has no tables.
@@ -35,7 +36,7 @@ describe('a database the deploy left without tables', () => {
   });
 
   it('ends up with the same schema and bookkeeping as wrangler, so neither path repeats the other', async () => {
-    expect(await applyPendingMigrations(env.DB)).toBe(1);
+    expect(await applyPendingMigrations(env.DB)).toBe(MIGRATIONS.length);
     const selfApplied = await schema();
     const selfTracking = await trackingColumns();
     expect(selfApplied.length).toBeGreaterThan(20);

@@ -8,6 +8,7 @@ import { applyPendingMigrations, isSchemaBehind } from './lib/schema';
 import { authRoutes } from './routes/auth';
 import { beanRoutes } from './routes/beans';
 import { brewRoutes } from './routes/brews';
+import { coachRoutes } from './routes/coach';
 import { duelRoutes } from './routes/duels';
 import { importRoutes } from './routes/import';
 import { memberRoutes } from './routes/members';
@@ -32,6 +33,7 @@ export function createApp() {
   app.route('/beans', beanRoutes);
   app.route('/recipes', recipeRoutes);
   app.route('/brews', brewRoutes);
+  app.route('/coach', coachRoutes);
   app.route('/duels', duelRoutes);
   app.route('/import', importRoutes);
 

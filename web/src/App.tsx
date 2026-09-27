@@ -11,7 +11,7 @@ import { BoardScreen } from './screens/BoardScreen';
 import { BrewLogScreen } from './screens/BrewLogScreen';
 import { BrewScreen } from './screens/BrewScreen';
 import { BrewTimerScreen } from './screens/BrewTimerScreen';
-import { ComingSoonScreen } from './screens/ComingSoonScreen';
+import { CoachScreen } from './screens/CoachScreen';
 import { CompareScreen } from './screens/CompareScreen';
 import { DuelNewScreen } from './screens/DuelNewScreen';
 import { DuelScreen } from './screens/DuelScreen';
@@ -19,6 +19,7 @@ import { DuelsScreen } from './screens/DuelsScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { LineageScreen } from './screens/LineageScreen';
 import { MembersScreen } from './screens/MembersScreen';
+import { QuickLogScreen } from './screens/QuickLogScreen';
 import { RecipeDetailScreen } from './screens/RecipeDetailScreen';
 import { RecipeFormScreen } from './screens/RecipeFormScreen';
 import { RecipesScreen } from './screens/RecipesScreen';
@@ -76,14 +77,13 @@ function Shell({ me }: { me: MeResponse }) {
           <Route path="/recipes/:id/lineage">{(p) => <LineageScreen id={p.id} />}</Route>
           <Route path="/recipes/:id">{(p) => <RecipeDetailScreen id={p.id} />}</Route>
           <Route path="/brew" component={BrewScreen} />
+          <Route path="/brew/quick" component={QuickLogScreen} />
           <Route path="/brew/:id/log">{(p) => <BrewLogScreen id={p.id} />}</Route>
           <Route path="/brew/:id">{(p) => <BrewTimerScreen id={p.id} />}</Route>
           <Route path="/duel" component={DuelsScreen} />
           <Route path="/duel/new" component={DuelNewScreen} />
           <Route path="/duel/:id">{(p) => <DuelScreen id={p.id} />}</Route>
-          <Route path="/coach">
-            <ComingSoonScreen section="coach" />
-          </Route>
+          <Route path="/coach" component={CoachScreen} />
           <Route path="/settings" component={SettingsScreen} />
           <Route path="/settings/members">{isOwner ? <MembersScreen /> : <Redirect to="/settings" replace />}</Route>
           <Route path="/settings/import">{isOwner ? <ImportScreen /> : <Redirect to="/settings" replace />}</Route>

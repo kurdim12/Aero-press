@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useSearch } from 'wouter';
-import type { RecipeRow } from '../../../shared/types';
+import type { QuickLogResponse, RecipeRow } from '../../../shared/types';
 import { extractionYield } from '../../../shared/formulas';
 import { BREW_LIMITS } from '../../../shared/limits';
 import { rememberBrewedRecipe } from '../brew/lastBrewed';
@@ -16,8 +16,10 @@ import {
   TimeField,
   useRevealFirstError,
 } from '../components/Fields';
+import { QuickLogBox, filledCount } from '../components/QuickLogBox';
 import { ScoreSlider } from '../components/ScoreSlider';
 import { TopBar } from '../components/TopBar';
+import { type BrewDraft, peekBrewDraft, stashBrewDraft } from '../drafts';
 import { setFlash } from '../flash';
 import { formatNumber, formatPercent, formatSeconds, parseNumber, parseTime } from '../format';
 import { newClientId } from '../ids';
@@ -34,7 +36,9 @@ type ScoreKey = (typeof SCORE_KEYS)[number];
 export function BrewLogScreen({ id }: { id: string }) {
   const recipes = useQuery(recipesQuery('all', null));
   const recipe = recipes.data?.recipes.find((r) => r.id === id);
-  const time = Number(new URLSearchParams(useSearch()).get('time'));
+  const params = new URLSearchParams(useSearch());
+  const time = Number(params.get('time'));
+  const draftKey = params.get('draft');
 
   if (!recipe) {
     return (
@@ -52,7 +56,15 @@ export function BrewLogScreen({ id }: { id: string }) {
       </>
     );
   }
-  return <LogForm recipe={recipe} initialTime={Number.isFinite(time) && time > 0 ? time : null} />;
+  return (
+    <LogForm
+      key={`${recipe.id}:${draftKey ?? ''}`}
+      recipe={recipe}
+      recipes={recipes.data?.recipes ?? []}
+      initialTime={Number.isFinite(time) && time > 0 ? time : null}
+      draft={peekBrewDraft(draftKey)}
+    />
+  );
 }
 
 type Values = { bean_id: string; grind_used: string; total_time_s: string; tds_pct: string; beverage_g: string; notes: string };
@@ -69,27 +81,69 @@ function measureError(value: number | null | 'invalid', limits: { min: number; m
   return undefined;
 }
 
-function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: number | null }) {
+const fromDraft = (n: number | null | undefined) => (n == null ? '' : formatNumber(n));
+
+function LogForm({
+  recipe,
+  recipes,
+  initialTime,
+  draft,
+}: {
+  recipe: RecipeRow;
+  recipes: RecipeRow[];
+  initialTime: number | null;
+  draft: BrewDraft | null;
+}) {
   const me = useMe();
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const beans = useQuery(beansQuery);
   const [values, setValues] = useState<Values>({
-    bean_id: recipe.bean_id ?? '',
-    grind_used: recipe.grind_setting ?? '',
-    total_time_s: initialTime ? formatSeconds(initialTime) : '',
-    tds_pct: '',
-    beverage_g: '',
-    notes: '',
+    bean_id: draft?.bean_id ?? recipe.bean_id ?? '',
+    grind_used: draft?.grind_used ?? recipe.grind_setting ?? '',
+    total_time_s: draft?.total_time_s ? formatSeconds(draft.total_time_s) : initialTime ? formatSeconds(initialTime) : '',
+    tds_pct: fromDraft(draft?.tds_pct),
+    beverage_g: fromDraft(draft?.beverage_g),
+    notes: draft?.notes ?? '',
   });
   const [scores, setScores] = useState<Record<ScoreKey, number | null>>({
-    sweetness: null,
-    acidity: null,
-    body: null,
-    clarity: null,
-    finish: null,
-    overall: null,
+    sweetness: draft?.sweetness ?? null,
+    acidity: draft?.acidity ?? null,
+    body: draft?.body ?? null,
+    clarity: draft?.clarity ?? null,
+    finish: draft?.finish ?? null,
+    overall: draft?.overall ?? null,
   });
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickNote, setQuickNote] = useState<string | null>(draft ? strings.quickLog.filled : null);
+  const [otherRecipe, setOtherRecipe] = useState<{ recipe: RecipeRow; result: QuickLogResponse } | null>(null);
+
+  const applyQuickLog = (r: QuickLogResponse) => {
+    setValues((v) => ({
+      ...v,
+      bean_id: r.bean_id ?? v.bean_id,
+      grind_used: r.grind_used ?? v.grind_used,
+      total_time_s: r.total_time_s != null ? formatSeconds(r.total_time_s) : v.total_time_s,
+      tds_pct: r.tds_pct != null ? formatNumber(r.tds_pct) : v.tds_pct,
+      beverage_g: r.beverage_g != null ? formatNumber(r.beverage_g) : v.beverage_g,
+      notes: r.notes ?? v.notes,
+    }));
+    setScores((current) => {
+      const next = { ...current };
+      for (const k of SCORE_KEYS) if (r[k] != null) next[k] = r[k];
+      return next;
+    });
+    setQuickNote(filledCount(r) ? strings.quickLog.filled : strings.quickLog.nothingFound);
+    const match = r.recipeMatch;
+    const other = match.id && match.id !== recipe.id && match.confidence >= 0.6 ? recipes.find((x) => x.id === match.id) : undefined;
+    setOtherRecipe(other ? { recipe: other, result: r } : null);
+  };
+
+  const switchRecipe = () => {
+    if (!otherRecipe) return;
+    const { recipeMatch: _r, beanMatch: _b, recipe_id: _id, ...fields } = otherRecipe.result;
+    navigate(`/brew/${otherRecipe.recipe.id}/log?draft=${stashBrewDraft(fields)}`, { replace: true });
+  };
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -139,6 +193,8 @@ function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: numb
         setFlash(l.saved);
         // Not awaited: if the connection drops right now, the refresh waits for it, the screen shouldn't.
         void invalidateLibrary(qc);
+        // The coach's two-sentence read is written just after the save; show it when it's there.
+        window.setTimeout(() => void qc.invalidateQueries({ queryKey: ['recipe', recipe.id] }), 6000);
         navigate(`/recipes/${recipe.id}`);
       } else {
         setFlash(l.queued);
@@ -171,6 +227,28 @@ function LogForm({ recipe, initialTime }: { recipe: RecipeRow; initialTime: numb
           <span className="code">{recipe.display_code}</span>
           {recipe.name ?? strings.recipes.untitled}
         </p>
+        <div className="quick-log-toggle">
+          {quickOpen ? (
+            <QuickLogBox recipeId={recipe.id} onResult={applyQuickLog} />
+          ) : (
+            <button type="button" className="btn secondary block" onClick={() => setQuickOpen(true)}>
+              {strings.quickLog.open}
+            </button>
+          )}
+          {quickNote && (
+            <p className="notice" role="status">
+              {quickNote}
+            </p>
+          )}
+          {otherRecipe && (
+            <div className="banner warn" style={{ display: 'grid', gap: 10 }}>
+              <span>{strings.quickLog.otherRecipe(otherRecipe.recipe.display_code)}</span>
+              <button type="button" className="btn secondary" onClick={switchRecipe}>
+                {strings.quickLog.switchRecipe(otherRecipe.recipe.display_code)}
+              </button>
+            </div>
+          )}
+        </div>
         <form className="form" onSubmit={(e) => void submit(e)} noValidate>
           <div className="form-section" style={{ paddingTop: 12 }}>
             <SelectField label={l.bean} value={values.bean_id} onChange={set('bean_id')} options={beanOptions} error={errors.bean_id} />

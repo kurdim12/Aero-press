@@ -1,5 +1,5 @@
 // How each recipe setting is labelled and displayed, shared by the detail and compare views.
-import type { RecipeRow } from '../../shared/types';
+import type { RecipeFields, RecipeRow } from '../../shared/types';
 import { formatGrams, formatRatio, formatSeconds, formatTemp } from './format';
 import { strings } from './strings';
 
@@ -34,3 +34,50 @@ export const RECIPE_DISPLAY_FIELDS: DisplayField[] = [
   { key: 'otherSteps', label: f.otherSteps, show: (r) => text(r.other_steps) },
   { key: 'notes', label: f.notes, show: (r) => text(r.notes) },
 ];
+
+/** Labels by recipe column, for AI experiment changes and prefilled drafts. */
+export const COLUMN_LABELS: Record<keyof RecipeFields, string> = {
+  name: f.name,
+  bean_id: f.bean,
+  method: f.method,
+  filter: f.filter,
+  dose_g: f.dose,
+  water_g: f.water,
+  temp_c: f.temp,
+  grinder: f.grinder,
+  grind_setting: f.grind,
+  water_recipe: f.waterRecipe,
+  bloom_water_g: f.bloomWater,
+  bloom_ends_s: f.bloomEnds,
+  agitation: f.agitation,
+  press_starts_s: f.pressStarts,
+  press_duration_s: f.pressDuration,
+  bypass_g: f.bypass,
+  bypass_temp: f.bypassTemp,
+  other_steps: f.otherSteps,
+  notes: f.notes,
+};
+
+/** One recipe column's value as the app shows it (a bean id shows as the bean's name). */
+export function formatColumn(key: keyof RecipeFields, value: unknown, beanName: (id: string) => string | undefined = () => undefined): string {
+  if (value === null || value === undefined || value === '') return strings.common.none;
+  switch (key) {
+    case 'dose_g':
+    case 'water_g':
+    case 'bloom_water_g':
+    case 'bypass_g':
+      return typeof value === 'number' ? formatGrams(value) : String(value);
+    case 'temp_c':
+      return typeof value === 'number' ? formatTemp(value) : String(value);
+    case 'bloom_ends_s':
+    case 'press_starts_s':
+    case 'press_duration_s':
+      return typeof value === 'number' ? formatSeconds(value) : String(value);
+    case 'method':
+      return strings.recipes.methods[String(value)] ?? String(value);
+    case 'bean_id':
+      return beanName(String(value)) ?? strings.common.none;
+    default:
+      return String(value);
+  }
+}
