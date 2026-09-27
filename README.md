@@ -1,110 +1,109 @@
 # AeroPress Lab (Team Edition)
 
-Championship prep for the Jordan AeroPress Championship: log beans, recipes and brews,
-rank recipes with blind head-to-head duels (Elo), monitor progress, and get AI coaching.
+Championship prep for the Jordan AeroPress Championship. The team logs beans, recipes and brews,
+ranks recipes in blind duels (Elo), watches progress on the Board, and gets coaching from Claude.
 
-One Cloudflare Worker serves both the API (Hono + D1) and the web app (Vite + React PWA).
+One Cloudflare Worker serves the API (Hono + D1) and the web app (Vite + React, installable).
 
-> Build status: **Phase 5 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
-> compare, lineage and locking; v1 import; brew timer, brew log with extraction yield, offline brewing;
-> blind multi-phone duels with a leaderboard; the AI coach, quick log by voice, and reads after brews and duels).
-> The owner's one-page guide (add a member, reset a PIN, AI budget, backups) arrives with the deploy in phase 7.
+## Owner's guide
 
-## Run it on your computer
+**Open the app.** In Cloudflare, go to **Workers & Pages › aero-press** and use its address
+(`https://aero-press.<your-subdomain>.workers.dev`). To use your own domain instead, open
+**Settings › Domains & Routes › Add › Custom domain** there and enter, for example,
+`lab.yourdomain.com`.
 
-You need Node.js 22.12 or newer (`node --version` to check).
+**Install it on a phone.**
+- iPhone: open the address in Safari, tap **Share**, then **Add to Home Screen**.
+- Android: open it in Chrome, open the **⋮** menu, then tap **Install app**.
 
-```bash
-npm install
-npm run dev
-```
+Once opened online, the brew timer and brew log work without a connection.
 
-Open **http://localhost:8787**. The first visit shows the one-time team setup.
+**Add a member.** Go to **Settings › Members › Add a barista** and type their name. They sign in
+by tapping their name and entering the team PIN.
 
-`npm run dev` builds the app, applies database migrations to a local D1 database
-(stored in `.wrangler/`), and starts `wrangler dev`. Stop it with Ctrl+C; your data stays.
+**Reset a PIN.** Go to **Settings › Members**, tap the person, then **Reset PIN**:
+- Enter a new PIN of 4 to 8 digits.
+- They sign in with that personal PIN from then on, and their other phones are signed out.
+- **Use the team PIN again** puts them back on the team PIN.
+- For your own owner PIN, tap your name in the same list.
+- To change the team PIN for everyone, use **Settings › Change team PIN**.
+- After 5 wrong PINs, a name locks for 15 minutes. A PIN reset unlocks it straight away.
 
-### Try it on your phone (same Wi-Fi)
+**Change the AI budget.** Go to **Settings › Team and championship**, set **AI budget per month
+(USD)** and tap **Save**.
+- The Board and the Coach tab show this month's spend against the budget.
+- When the budget is used up, the coach stops for everyone until the 1st of next month (Amman
+  time) or until you raise it.
+- The same screen has the championship name and date (the Board counts down to it) and the
+  competition coffee notes.
 
-```bash
-npm run dev:lan
-```
+**Turn on the AI coach (once).**
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com) (Settings › API keys).
+2. In Cloudflare, go to **Workers & Pages › aero-press › Settings › Variables and Secrets ›
+   Add**. Choose type **Secret**, name it `ANTHROPIC_API_KEY`, paste the key, and deploy.
 
-Then open `http://<your-computer's-IP>:8787` on the phone (on a Mac: System Settings → Wi-Fi →
-Details → IP address). Plain http is fine for sign-in, the brew timer and logging. Browsers
-only allow some features over https: working offline, keeping the screen awake, and installing
-the app. Those need the deployed version, or `http://localhost:8787` on the computer itself.
+The key stays in Cloudflare and never reaches anyone's phone. Until it's added, the rest of the
+app works and the Coach tab says the coach isn't set up.
 
-### Brewing without a connection
+**Back up your data.** Go to **Settings › Download backup**. The phone saves one JSON file with
+the beans, recipes, brews, duels, votes, readiness reports and AI usage. It leaves out PINs and
+sign-ins. Keep a copy somewhere safe, for example once a week and before the championship.
 
-Open the app online once, and after that it works without a connection. The timer runs,
-and brews you log wait on the phone ("1 brew is waiting to sync"). They go up by themselves
-when the connection comes back. Brews that are still waiting stay on the phone after
-sign-out and sync the next time that person signs in there. To try it on the computer, open
-Chrome's DevTools, then Network › Offline.
+**Bring in the old app's data.** Go to **Settings › Import v1 backup** and pick the file the old
+app exported. Importing twice is safe.
 
-### Import your v1 backup
+**Start from a champion's recipe.** Go to **Recipes › World champion recipes** for the
+published World AeroPress Championship podium recipes from 2009 to 2025, each with its sources.
+**Add to our recipes** opens a new recipe with those settings.
 
-Sign in as the owner, then **Settings › Import v1 backup** and pick the JSON file the old app
-exported. You'll see what's in it before anything is saved, and importing twice is safe.
-To try the flow without your own file, use `test/fixtures/v1-backup.json` (made-up sample data).
+## Deploying
 
-## Deploy
-
-The app deploys from GitHub through Cloudflare Workers Builds, to the Worker `aero-press`. Every
-push to the production branch deploys. The first deploy creates the `aeropress-lab` D1 database in
-your Cloudflare account, or reuses one that already has that name.
-
-The app creates and updates its own database tables the first time they're needed, so the default
-deploy command (`npx wrangler deploy`) works. Setting the deploy command to `npm run deploy`
-(**Workers & Pages › aero-press › Settings › Build**) applies the updates as part of the deploy
-instead.
+Every push to this repository's branch deploys through Cloudflare Workers Builds to the Worker
+`aero-press`.
+- The first deploy creates the `aeropress-lab` D1 database, or reuses one with that name.
+- The app creates and updates its own tables the first time it needs them, so the default deploy
+  command (`npx wrangler deploy`) is enough.
+- The deploy command can also be `npm run deploy` (**Workers & Pages › aero-press › Settings ›
+  Build**), which applies database updates during the deploy instead.
 
 Right after the first deploy, open the site and complete the team setup. Until someone does, the
 setup screen is open to anyone who has the link.
 
 To deploy from your own computer instead, run `npx wrangler login` and then `npm run deploy`.
 
-### Turn on the AI coach
+## Running it on a computer
 
-The coach runs inside the Worker with your Anthropic API key. The key stays in Cloudflare and never
-reaches anyone's phone.
-
-1. Create a key at [console.anthropic.com](https://console.anthropic.com) (Settings › API keys).
-2. In Cloudflare, open **Workers & Pages › aero-press › Settings › Variables and Secrets**, choose
-   **Add**, type **Secret**, name `ANTHROPIC_API_KEY`, paste the key, and deploy. (From your
-   computer instead: `npx wrangler secret put ANTHROPIC_API_KEY`.)
-3. Open the **Coach** tab. It shows this month's AI spend against the team's monthly budget
-   ($10 to start). Once the budget is used up, the coach stops until next month or until the
-   owner raises it.
-
-For the coach on your computer, copy `.dev.vars.example` to `.dev.vars` and put the key there.
-
-### Start over with an empty database
+You need Node.js 22.12 or newer.
 
 ```bash
-npm run db:reset
+npm install
+npm run dev          # http://localhost:8787 (first visit shows the team setup)
+npm run dev:lan      # the same, reachable from phones on your Wi-Fi at http://<computer-ip>:8787
 ```
 
-## Scripts
+Over plain http on the Wi-Fi, sign-in, the timer and logging work. Offline mode, keeping the
+screen awake and installing need https: use the deployed app, or `http://localhost:8787` on the
+computer itself.
+
+For the AI coach locally, copy `.dev.vars.example` to `.dev.vars` and put your key there.
+`test/fixtures/v1-backup.json` is a made-up v1 backup for trying the import.
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Build, migrate the local database, serve on http://localhost:8787 |
 | `npm run dev:lan` | Same, reachable from phones on your network |
 | `npm run dev:web` | Hot-reloading UI on :5173 (run `npm run dev` alongside for the API) |
-| `npm test` | Unit tests plus API tests inside the Workers runtime with a real D1 |
+| `npm test` | Unit tests, plus API tests inside the Workers runtime with a real D1 |
 | `npm run typecheck` | Strict TypeScript for the Worker, the web app and tooling |
 | `npm run db:reset` | Delete the local database and re-apply migrations |
+| `npm run gen:migrations` | Rebuild the migrations bundle after changing `migrations/` |
 | `npm run deploy` | Build, deploy to Cloudflare, then apply migrations to the live database |
 
-## Layout
-
 ```
-migrations/     D1 schema (SQL), applied with wrangler
-worker/src/     Hono API: routes, auth, D1 access
+migrations/     D1 schema (SQL); the Worker also applies them itself when needed
+worker/src/     Hono API: routes, auth, D1 access, AI coach (worker/src/ai)
 worker/test/    API tests (Workers runtime + D1)
 web/src/        React app; every UI string is in web/src/strings.ts
-shared/         Types, zod input schemas and pure helpers used by both sides
+shared/         Types, zod input schemas, formulas, Elo, champion recipes
 test/unit/      Pure-function tests
 ```
