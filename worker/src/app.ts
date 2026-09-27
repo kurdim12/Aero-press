@@ -4,7 +4,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import type { AppEnv } from './env';
 import type { ApiErrorBody } from '../../shared/types';
 import { ApiError } from './lib/errors';
-import { applyPendingMigrations, isSchemaBehind } from './lib/schema';
+import { applyPendingMigrations, ensureCurrentSchema, isSchemaBehind } from './lib/schema';
 import { authRoutes } from './routes/auth';
 import { beanRoutes } from './routes/beans';
 import { brewRoutes } from './routes/brews';
@@ -25,6 +25,11 @@ export function createApp() {
   app.use('*', async (c, next) => {
     await next();
     c.header('Cache-Control', 'no-store');
+  });
+  // Bring the database up to date once per Worker instance (see lib/schema.ts).
+  app.use('*', async (c, next) => {
+    await ensureCurrentSchema(c.env.DB);
+    await next();
   });
 
   app.route('/setup', setupRoutes);

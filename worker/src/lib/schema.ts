@@ -40,3 +40,34 @@ export async function applyPendingMigrations(db: D1Database, migrations: Migrati
   }
   return ran;
 }
+
+let schemaCheck: Promise<void> | null = null;
+
+/**
+ * Once per Worker instance: apply bundled migrations the database hasn't recorded yet, before the
+ * first request is handled. Needed for migrations that never make a query fail (new indexes), so
+ * the "no such table" path in onError would never run them. A database with no bookkeeping table
+ * at all is brand new; the error path sets that up. Never blocks a request on its own failure.
+ */
+export function ensureCurrentSchema(db: D1Database): Promise<void> {
+  schemaCheck ??= (async () => {
+    let applied: Set<string>;
+    try {
+      const { results } = await db.prepare('SELECT name FROM d1_migrations').all<{ name: string }>();
+      applied = new Set(results.map((row) => row.name));
+    } catch {
+      return; // no d1_migrations yet: a fresh database
+    }
+    if (MIGRATIONS.every((m) => applied.has(m.name))) return;
+    await applyPendingMigrations(db);
+  })().catch((err: unknown) => {
+    schemaCheck = null; // try again on the next request
+    console.error('Schema check failed', err instanceof Error ? err.message : String(err));
+  });
+  return schemaCheck;
+}
+
+/** Tests only: forget that this instance already checked. */
+export function resetSchemaCheck(): void {
+  schemaCheck = null;
+}

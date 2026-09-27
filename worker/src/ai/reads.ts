@@ -67,8 +67,12 @@ export async function writeBrewRead(scope: AiScope, brewId: string): Promise<voi
   if (read) await db.prepare('UPDATE brews SET ai_read = ? WHERE id = ? AND team_id = ?').bind(read, brewId, team).run();
 }
 
-/** What the duel result suggests and one next test. Saved on the duel as JSON. */
-export async function writeDuelRead(scope: AiScope, duel: DuelDbRow): Promise<DuelRead> {
+/**
+ * What the duel result suggests and one next test. Saved on the duel as JSON, but only while
+ * `claim` (the caller's pending marker) still holds; if another phone took over a stale claim,
+ * its read stands and this one is returned without being saved.
+ */
+export async function writeDuelRead(scope: AiScope, duel: DuelDbRow, claim: string): Promise<DuelRead> {
   const db = scope.db;
   const team = scope.member.team_id;
   const [recipes, avgX, avgY, beans] = await Promise.all([
@@ -91,7 +95,10 @@ export async function writeDuelRead(scope: AiScope, duel: DuelDbRow): Promise<Du
   };
   const out = await askJson(scope, 'duelRead', duelReadOutput, COACH_SYSTEM, duelReadPrompt(summary));
   const read: DuelRead = { read: out.read, next_test: out.next_test ? toExperiment(out.next_test, recipes, beans.results) : null };
-  await db.prepare('UPDATE duels SET ai_read = ? WHERE id = ? AND team_id = ?').bind(JSON.stringify(read), duel.id, team).run();
+  await db
+    .prepare('UPDATE duels SET ai_read = ? WHERE id = ? AND team_id = ? AND ai_read = ?')
+    .bind(JSON.stringify(read), duel.id, team, claim)
+    .run();
   return read;
 }
 

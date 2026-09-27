@@ -13,7 +13,8 @@ const BY_ID: Partial<Record<ExportPart, string>> = {
   beans: 'SELECT * FROM beans WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
   recipes: 'SELECT * FROM recipes WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
   brews: 'SELECT * FROM brews WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
-  duels: 'SELECT * FROM duels WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
+  // Only finished duels: while one runs, its cups and votes are secret even from the owner (who may judge).
+  duels: `SELECT * FROM duels WHERE team_id = ?1 AND status IN ('revealed', 'cancelled') AND id > ?2 ORDER BY id LIMIT ?3`,
   readiness_reports: 'SELECT * FROM readiness_reports WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
   ai_calls: 'SELECT * FROM ai_calls WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
   members: `SELECT id, team_id, name, role, active, (role = 'barista' AND pin_hash IS NOT NULL) AS has_personal_pin, created_at
@@ -53,7 +54,7 @@ exportRoutes.get('/', async (c) => {
   const table = BY_DUEL[part];
   if (!table) return c.json<ExportPage>({ part, rows: [], next: null });
   const window = await db
-    .prepare('SELECT id FROM duels WHERE team_id = ? AND id > ? ORDER BY id LIMIT ?')
+    .prepare(`SELECT id FROM duels WHERE team_id = ? AND status IN ('revealed', 'cancelled') AND id > ? ORDER BY id LIMIT ?`)
     .bind(team, after ?? '', EXPORT_PAGE)
     .all<{ id: string }>();
   const ids = window.results.map((r) => r.id);
@@ -63,7 +64,7 @@ exportRoutes.get('/', async (c) => {
   const { results } = await db
     .prepare(
       `SELECT t.* FROM ${table} t JOIN duels d ON d.id = t.duel_id
-        WHERE d.team_id = ? AND t.duel_id >= ? AND t.duel_id <= ? ORDER BY t.duel_id`,
+        WHERE d.team_id = ? AND d.status IN ('revealed', 'cancelled') AND t.duel_id >= ? AND t.duel_id <= ? ORDER BY t.duel_id`,
     )
     .bind(team, first, last)
     .all<Record<string, unknown>>();

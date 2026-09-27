@@ -63,6 +63,9 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
     and answers 503 `database_updated`; the app retries reads by itself.
     - This was needed because the dashboard deploy command stayed `npx wrangler deploy`, so the
       first live deploy had no tables.
+    - Once per Worker instance, `ensureCurrentSchema` (middleware) also applies bundled
+      migrations missing from `d1_migrations`, for changes that never make a query fail (new
+      indexes). A database with no `d1_migrations` table is left to the error path.
     - The bundle is `worker/src/migrations.gen.ts`. After adding or changing a migration, run
       `npm run gen:migrations`; a unit test fails if the bundle is stale.
     - `npm run deploy` (build, deploy, `d1 migrations apply --remote`) also works, and each path
@@ -143,20 +146,35 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
 
 - AI (phase 5), all in `worker/src/ai/`:
   - Every call checks the monthly budget first (month-to-date `SUM(cost_usd)` in Amman time, the
-    spec's exact message on 402), then logs tokens and cost in `ai_calls`.
+    spec's exact message on 402).
+  - Then it reserves an `ai_calls` row at its worst-case cost (estimated input plus the full
+    `max_tokens`) and corrects it from `usage`:
+    - An HTTP error from the API deletes the row (not billed).
+    - A timeout or a stream cut off mid-answer keeps the worst case.
+    - Cost is priced from `MODELS[kind]`, never from the model name in the reply.
+  - Every call streams (`messages.stream().finalMessage()`), because the SDK timeout only covers
+    the wait for the first byte, so long answers aren't cut off and retried.
   - JSON replies come from prompt instructions, checked with zod (`shared/schemas.ts`), with one
     retry that quotes the error. Structured outputs aren't used. Sonnet 5 takes
     `output_config.effort`, with no temperature and no prefill.
   - Parent codes resolve to team recipes. A "change" to the parent's own value is dropped.
-  - Today's session is cached per member per day in `coach_cache`. Readiness reports are stored.
+  - Today's session is cached per member per day in `coach_cache`:
+    - A `pending:<ms>` row claims the write, so tabs and phones wait instead of paying twice.
+    - A failed write deletes its claim.
+    - Below two team recipes there is no call at all.
+    - On the phone, the Board and the Coach tab share one attempt per day, with no automatic
+      retries.
+  - Readiness reports are stored.
     Ask anything streams the SSE straight through, and a meter reads the usage.
   - Quick log (Haiku) returns only ids from the team's lists, else null. The brew log then opens
     prefilled through an in-memory draft (`web/src/drafts.ts`, `draft` URL token).
   - Reads:
     - Brew read: Haiku, in `waitUntil` after the save. The log screen refetches the recipe after 6 s.
-    - Duel read: Sonnet. The first phone to ask claims it (`ai_read = 'pending:<ms>'`, stale after
-      90 s) and the others get 202 and ask again every 3 s. It's automatic for a day after the
-      reveal; older duels get a button.
+    - Duel read: Sonnet (the spec names both Haiku and Sonnet; Sonnet chosen).
+      - The first phone to ask claims it (`ai_read = 'pending:<ms>'`, stale after 6 minutes,
+        longer than the slowest write). Its final write only lands while the claim holds.
+      - The others get 202 and ask again every 3 s.
+      - It's automatic for a day after the reveal; older duels get a button.
   - Tests swap the network through `aiTransport`. Local click-throughs can use the same hook
     with a stand-in server; real calls need `ANTHROPIC_API_KEY`.
   - Prices: Sonnet 5 at $2 / $10 per million tokens (the introductory price is now permanent),
@@ -186,6 +204,15 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
 - Settings: `GET/PUT /api/team` (everyone reads, the owner saves; the budget is rounded to cents).
   Backup: `GET /api/export?part=&after=` for the owner, one table per request in pages of 500,
   never PIN hashes or sessions. The browser builds the single JSON file.
+  - Only finished duels (revealed or cancelled), with their judges and votes, are exported. The
+    owner can judge, so a live duel stays secret even from them.
+- D1 free-plan read budget (5M rows/day):
+  - The Board reads about 7k rows per load on a team with 5k brews and 1k duels.
+  - One windowed scan of recent brews covers the weekly scores, spreads and activity.
+  - Duel activity is bounded to 30 days.
+  - Last brews come from `idx_brews_team_member_created`.
+  - The Board is cached for 60 s on the phone.
+  - Recipe lists skip `brew_count` (null); only the single-recipe fetch counts brews.
 - PWA: `web/public/manifest.webmanifest`, icons in `web/public/icons` (rendered from the favicon
   design). The manifest and icons are in the service worker's precache list (`vite.config.ts`).
 - The web app must not import runtime values from `shared/schemas.ts` (that would pull zod into
@@ -199,4 +226,5 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
    plus a library of World AeroPress Championship recipes.
 5. AI coach, quick log, reads: built.
 6. Dashboard, settings, export, PWA install: built.
-7. Owner README, final checks: next.
+7. Owner README (one-page owner's guide), final checks, review fixes: done. The Anthropic key
+   must be added in Cloudflare by the owner; real AI calls couldn't be tested from here.

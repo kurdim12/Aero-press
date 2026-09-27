@@ -235,8 +235,12 @@ duelRoutes.post('/:id/rematch', async (c) => {
   return c.json<DuelView>(await viewOf(db, me, rematchId), 201);
 });
 
-/** A claim older than this was abandoned (the phone closed mid-call); someone else may write it. */
-const READ_CLAIM_MS = 90_000;
+/**
+ * How long a phone's claim on writing the duel read holds. Longer than the slowest possible
+ * write (two calls, each allowed a 90 s wait for the first byte plus one retry), so a slow but
+ * live write is never duplicated; a claim left by a Worker that died is taken over after this.
+ */
+const READ_CLAIM_MS = 6 * 60_000;
 
 /**
  * The coach's read of a revealed duel, written once. The first phone to ask claims it and writes
@@ -261,7 +265,7 @@ duelRoutes.post('/:id/read', async (c) => {
     .run();
   if (claim.meta.changes === 0) return c.json<DuelReadResponse>({ read: null, pending: true }, 202);
   try {
-    const read = await writeDuelRead({ db, apiKey: aiKey(c.env), member: me }, duel);
+    const read = await writeDuelRead({ db, apiKey: aiKey(c.env), member: me }, duel, marker);
     return c.json<DuelReadResponse>({ read, pending: false });
   } catch (err) {
     await db.prepare('UPDATE duels SET ai_read = NULL WHERE id = ? AND team_id = ? AND ai_read = ?').bind(id, me.team_id, marker).run();

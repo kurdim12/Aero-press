@@ -19,30 +19,10 @@ type Reply = (body: Record<string, unknown>) => Response;
 let replies: Reply[] = [];
 let requests: Record<string, unknown>[] = [];
 
-const message = (text: string, usage = { input_tokens: 2000, output_tokens: 500 }): Reply => (body) =>
-  new Response(
-    JSON.stringify({
-      id: 'msg_test',
-      type: 'message',
-      role: 'assistant',
-      model: body.model,
-      content: [{ type: 'text', text }],
-      stop_reason: 'end_turn',
-      stop_sequence: null,
-      usage,
-    }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  );
-
-const apiError = (status: number, type: string): Reply => () =>
-  new Response(JSON.stringify({ type: 'error', error: { type, message: 'nope' } }), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-
-const sse = (chunks: string[], usage = { input_tokens: 900, output_tokens: 42 }): Reply => () => {
+/** A Messages event stream, the way the API sends one. */
+function eventStream(chunks: string[], usage: { input_tokens: number; output_tokens: number }, model: string): Response {
   const events = [
-    ['message_start', { type: 'message_start', message: { id: 'msg_s', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [], usage: { input_tokens: usage.input_tokens, output_tokens: 1 } } }],
+    ['message_start', { type: 'message_start', message: { id: 'msg_s', type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: usage.input_tokens, output_tokens: 1 } } }],
     ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
     ...chunks.map((text) => ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }]),
     ['content_block_stop', { type: 'content_block_stop', index: 0 }],
@@ -51,7 +31,19 @@ const sse = (chunks: string[], usage = { input_tokens: 900, output_tokens: 42 })
   ] as const;
   const text = events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
   return new Response(text, { status: 200, headers: { 'content-type': 'text/event-stream' } });
-};
+}
+
+/** A reply with this text (streamed, since the Worker streams every call). `model` is what the API says it served. */
+const message = (text: string, usage = { input_tokens: 2000, output_tokens: 500 }, model?: string): Reply => (body) =>
+  eventStream([text], usage, model ?? String(body.model));
+
+const apiError = (status: number, type: string): Reply => () =>
+  new Response(JSON.stringify({ type: 'error', error: { type, message: 'nope' } }), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+
+const sse = (chunks: string[], usage = { input_tokens: 900, output_tokens: 42 }): Reply => () => eventStream(chunks, usage, 'claude-sonnet-5');
 
 beforeEach(async () => {
   await freshDb();
@@ -81,11 +73,11 @@ const experiment = (parent: string, changes: Record<string, unknown>) => ({
 });
 
 async function teamWithRecipes() {
-  const { owner } = await setupTeam();
+  const { owner, me } = await setupTeam();
   const bean = (await owner.post<{ id: string }>('/api/beans', { name: 'Ethiopia Guji', origin: 'Ethiopia' })).body;
   const r1 = (await owner.post<RecipeRow>('/api/recipes', recipeBody({ name: 'Base', bean_id: bean.id }))).body;
   const r2 = (await owner.post<RecipeRow>('/api/recipes', recipeBody({ name: 'Cooler', temp_c: 86, bean_id: bean.id }))).body;
-  return { owner, bean, r1, r2 };
+  return { owner, me, bean, r1, r2 };
 }
 
 const spendRows = () => env.DB.prepare('SELECT kind, model, input_tokens, output_tokens, cost_usd FROM ai_calls ORDER BY created_at').all();
@@ -200,6 +192,28 @@ describe('budget cap', () => {
     const busy = await owner.post('/api/coach/readiness', {});
     expect(busy.status).toBe(503);
     expect(busy.body.error.code).toBe('ai_busy');
+    // The API turned it away, so nothing was billed and nothing counts toward the budget.
+    expect((await spendRows()).results).toEqual([]);
+  });
+
+  it('counts a call that never answers at its worst case, and prices by the model asked for', async () => {
+    const { owner } = await teamWithRecipes();
+    const hangUp: Reply = () => {
+      throw new TypeError('network connection lost');
+    };
+    replies.push(hangUp, hangUp);
+    const lost = await owner.post('/api/coach/plan', {});
+    expect(lost.status).toBe(503);
+    const kept = (await spendRows()).results as { output_tokens: number; cost_usd: number }[];
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ output_tokens: 8000 });
+    expect(kept[0]!.cost_usd).toBeGreaterThan(0.08);
+
+    // A reply naming a model the price list doesn't know is still priced as the model we asked for.
+    await env.DB.prepare('DELETE FROM ai_calls').run();
+    replies.push(message(JSON.stringify({ verdict: 'close', biggestRisk: 'x', fixes: ['a', 'b', 'c'], evidence: 'y' }), { input_tokens: 1000, output_tokens: 100 }, 'claude-sonnet-5-20991231'));
+    expect((await owner.post('/api/coach/readiness', {})).status).toBe(200);
+    expect((await spendRows()).results).toEqual([{ kind: 'readiness', model: 'claude-sonnet-5', input_tokens: 1000, output_tokens: 100, cost_usd: 0.003 }]);
   });
 });
 
@@ -221,6 +235,41 @@ describe('coach: readiness, today and ask', () => {
     expect(res.body).toEqual({ session: null, needs_recipes: true });
     expect(requests).toHaveLength(0);
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM coach_cache').first<{ n: number }>())?.n).toBe(0);
+  });
+
+  it('writes today’s card once, however many tabs ask, and frees a failed claim', async () => {
+    const { owner, me, r1, r2 } = await teamWithRecipes();
+    const day = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+    const claim = (ms: number) =>
+      env.DB.prepare(`INSERT INTO coach_cache (team_id, member_id, kind, day, result_json, created_at) VALUES (?, ?, 'today', ?, ?, ?)`)
+        .bind(me.team.id, me.member.id, day, `pending:${ms}`, ms)
+        .run();
+
+    // Another tab is writing it: this one waits, and nothing is called.
+    await claim(Date.now());
+    expect((await owner.post<TodayResponse>('/api/coach/today', {})).body).toEqual({ session: null, pending: true });
+    expect((await owner.get<TodayResponse>('/api/coach/today')).body).toEqual({ session: null, pending: true });
+    expect(requests).toHaveLength(0);
+
+    // A claim left behind by a writer that died is taken over.
+    await env.DB.prepare('DELETE FROM coach_cache').run();
+    await claim(Date.now() - 7 * 60_000);
+    replies.push(message(JSON.stringify({ summary: 'Settle it.', duels: [{ a: r1.display_code, b: r2.display_code, why: 'Close.' }] })));
+    expect((await owner.post<TodayResponse>('/api/coach/today', {})).body.session?.summary).toBe('Settle it.');
+    expect(requests).toHaveLength(1);
+
+    // Two tabs at once: still one call, and each gets the card or waits for it.
+    await env.DB.prepare('DELETE FROM coach_cache').run();
+    replies.push(message(JSON.stringify({ summary: 'Again.', duels: [] })));
+    const both = await Promise.all([owner.post<TodayResponse>('/api/coach/today', {}), owner.post<TodayResponse>('/api/coach/today', {})]);
+    expect(requests).toHaveLength(2);
+    for (const res of both) expect(res.body.session?.summary === 'Again.' || res.body.pending === true).toBe(true);
+
+    // A write that fails leaves nothing behind, so a later attempt can try again.
+    await env.DB.prepare('DELETE FROM coach_cache').run();
+    replies.push(apiError(400, 'invalid_request_error'));
+    expect((await owner.post('/api/coach/today', {})).status).toBe(502);
+    expect((await owner.get<TodayResponse>('/api/coach/today')).body).toEqual({ session: null });
   });
 
   it('writes today’s session once per member per day', async () => {

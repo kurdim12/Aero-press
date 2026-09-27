@@ -5,9 +5,12 @@ import { type EloDuel, replayElo } from './elo';
 /** A recipe whose TDS or overall score spreads this much (standard deviation) is flagged. */
 export const UNRELIABLE_TDS_SD = 0.08;
 export const UNRELIABLE_OVERALL_SD = 1;
-/** Consistency needs at least this many brews of a recipe. */
+/** Consistency needs at least this many brews of a recipe, within the last CONSISTENCY_DAYS. */
 export const CONSISTENCY_MIN_BREWS = 3;
+export const CONSISTENCY_DAYS = 90;
 export const VOLUME_DAYS = 30;
+/** How far back "last session" looks for duels (brews use their whole history, via an index). */
+export const ACTIVITY_LOOKBACK_DAYS = 30;
 export const WEEKLY_WEEKS = 12;
 /** Readiness targets. */
 export const READY_WINS = 5;

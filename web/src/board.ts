@@ -8,6 +8,8 @@ export const boardQuery = (memberId: string | null) =>
   queryOptions({
     queryKey: ['board', memberId ?? 'team'],
     queryFn: () => api<BoardResponse>('GET', `/api/board${memberId ? `?member=${encodeURIComponent(memberId)}` : ''}`),
+    // The Board is the home screen: a minute-old copy is fine, and it spares D1's daily read quota.
+    staleTime: 60_000,
   });
 
 export const teamSettingsQuery = queryOptions({

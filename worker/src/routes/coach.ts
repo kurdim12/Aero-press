@@ -89,48 +89,83 @@ coachRoutes.post('/adapt', async (c) => {
   });
 });
 
-async function cachedToday(db: D1Database, memberId: string, day: string): Promise<TodaySession | null> {
+/** A card being written is saved as `pending:<ms>` first, so a second phone or tab waits for it. */
+const TODAY_PENDING = 'pending:';
+/** Longer than the slowest write (a call and its one retry); a claim older than this was abandoned. */
+const TODAY_CLAIM_MS = 6 * 60_000;
+
+type TodayState = { session: TodaySession } | { pending: string } | null;
+
+async function todayState(db: D1Database, memberId: string, day: string): Promise<TodayState> {
   const row = await db
     .prepare(`SELECT result_json FROM coach_cache WHERE member_id = ? AND kind = 'today' AND day = ?`)
     .bind(memberId, day)
     .first<{ result_json: string }>();
-  return row ? (JSON.parse(row.result_json) as TodaySession) : null;
+  if (!row) return null;
+  if (row.result_json.startsWith(TODAY_PENDING)) return { pending: row.result_json };
+  return { session: JSON.parse(row.result_json) as TodaySession };
 }
 
-/** Today's session card, if it has been written today. */
+const claimAge = (marker: string) => Date.now() - Number(marker.slice(TODAY_PENDING.length));
+
+/** Today's session card, if it has been written today (or `pending` while it is being written). */
 coachRoutes.get('/today', async (c) => {
-  const me = c.get('member');
-  return c.json<TodayResponse>({ session: await cachedToday(c.env.DB, me.id, localDay()) });
+  const state = await todayState(c.env.DB, c.get('member').id, localDay());
+  if (state && 'session' in state) return c.json<TodayResponse>({ session: state.session });
+  return c.json<TodayResponse>({ session: null, ...(state ? { pending: true } : {}) });
 });
 
-/** Write today's card (once per member per day; later calls return the same card). */
+/** Write today's card: once per member per day, however many phones or tabs ask at once. */
 coachRoutes.post('/today', async (c) => {
   const scope = scopeOf(c);
+  const db = scope.db;
+  const memberId = scope.member.id;
   const today = localDay();
-  const cached = await cachedToday(scope.db, scope.member.id, today);
-  if (cached) return c.json<TodayResponse>({ session: cached });
-  // Nothing to duel yet: no call, and nothing cached, so the card writes itself once there is.
-  const count = await scope.db.prepare('SELECT COUNT(*) AS n FROM recipes WHERE team_id = ?').bind(scope.member.team_id).first<{ n: number }>();
+  const state = await todayState(db, memberId, today);
+  if (state && 'session' in state) return c.json<TodayResponse>({ session: state.session });
+  if (state && claimAge(state.pending) < TODAY_CLAIM_MS) return c.json<TodayResponse>({ session: null, pending: true });
+  // Nothing to duel yet: no call, and nothing saved, so the card writes itself once there is.
+  const count = await db.prepare('SELECT COUNT(*) AS n FROM recipes WHERE team_id = ?').bind(scope.member.team_id).first<{ n: number }>();
   if ((count?.n ?? 0) < 2) return c.json<TodayResponse>({ session: null, needs_recipes: true });
-  const { pack, recipes } = await buildContextPack(scope.db, scope.member, { recipeLimit: 12 });
-  const out = await askJson(scope, 'today', todayOutput, COACH_SYSTEM, `${dataBlock(pack)}\n\n${TODAY_PROMPT}`);
-  const session: TodaySession = {
-    day: today,
-    summary: out.summary,
-    duels: out.duels.map((d) => {
-      const a = findRecipeByCode(recipes, d.a);
-      const b = findRecipeByCode(recipes, d.b);
-      return { a: a?.display_code ?? d.a, b: b?.display_code ?? d.b, a_id: a?.id ?? null, b_id: b?.id ?? null, why: d.why };
-    }),
-    created_at: Date.now(),
-  };
-  await scope.db
-    .prepare(
-      `INSERT OR IGNORE INTO coach_cache (team_id, member_id, kind, day, result_json, created_at) VALUES (?, ?, 'today', ?, ?, ?)`,
-    )
-    .bind(scope.member.team_id, scope.member.id, today, JSON.stringify(session), session.created_at)
-    .run();
-  return c.json<TodayResponse>({ session: (await cachedToday(scope.db, scope.member.id, today)) ?? session });
+
+  const marker = `${TODAY_PENDING}${Date.now()}`;
+  const claim = state
+    ? await db
+        .prepare(`UPDATE coach_cache SET result_json = ?, created_at = ? WHERE member_id = ? AND kind = 'today' AND day = ? AND result_json = ?`)
+        .bind(marker, Date.now(), memberId, today, state.pending)
+        .run()
+    : await db
+        .prepare(`INSERT OR IGNORE INTO coach_cache (team_id, member_id, kind, day, result_json, created_at) VALUES (?, ?, 'today', ?, ?, ?)`)
+        .bind(scope.member.team_id, memberId, today, marker, Date.now())
+        .run();
+  if (claim.meta.changes === 0) return c.json<TodayResponse>({ session: null, pending: true });
+
+  try {
+    const { pack, recipes } = await buildContextPack(db, scope.member, { recipeLimit: 12 });
+    const out = await askJson(scope, 'today', todayOutput, COACH_SYSTEM, `${dataBlock(pack)}\n\n${TODAY_PROMPT}`);
+    const session: TodaySession = {
+      day: today,
+      summary: out.summary,
+      duels: out.duels.map((d) => {
+        const a = findRecipeByCode(recipes, d.a);
+        const b = findRecipeByCode(recipes, d.b);
+        return { a: a?.display_code ?? d.a, b: b?.display_code ?? d.b, a_id: a?.id ?? null, b_id: b?.id ?? null, why: d.why };
+      }),
+      created_at: Date.now(),
+    };
+    await db
+      .prepare(`UPDATE coach_cache SET result_json = ?, created_at = ? WHERE member_id = ? AND kind = 'today' AND day = ? AND result_json = ?`)
+      .bind(JSON.stringify(session), session.created_at, memberId, today, marker)
+      .run();
+    return c.json<TodayResponse>({ session });
+  } catch (err) {
+    // Let the next attempt try again (the caller decides whether to).
+    await db
+      .prepare(`DELETE FROM coach_cache WHERE member_id = ? AND kind = 'today' AND day = ? AND result_json = ?`)
+      .bind(memberId, today, marker)
+      .run();
+    throw err;
+  }
 });
 
 interface ReportRow {

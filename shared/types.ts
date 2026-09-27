@@ -155,7 +155,8 @@ export interface RecipeRow extends Recipe, Standing {
   owner_initials: string;
   bean_name: string | null;
   parent_display_code: string | null;
-  brew_count: number;
+  /** How many brews it has: on a single recipe only (lists leave it null, to spare D1 reads). */
+  brew_count: number | null;
 }
 
 export interface RecipesResponse {
@@ -352,6 +353,8 @@ export interface TodaySession {
 
 export interface TodayResponse {
   session: TodaySession | null;
+  /** Another phone or tab is writing it right now; ask again in a few seconds. */
+  pending?: boolean;
   /** True when the team has fewer than two recipes, so there is nothing to duel yet (no AI call). */
   needs_recipes?: boolean;
 }

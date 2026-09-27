@@ -86,7 +86,9 @@ describe('ranking and detail after importing v1 data', () => {
     const list = (await owner.get<RecipesResponse>('/api/recipes')).body.recipes;
     expect(list.map((r) => r.code)).toEqual(['R7', 'R3', 'R5', 'R4', 'R6', 'R2', 'R1']);
     const byCode = (code: string) => list.find((r) => r.code === code);
-    expect(byCode('R7')).toMatchObject({ elo: 1515, wins: 2, losses: 1, draws: 0, duels: 3, brew_count: 3 });
+    expect(byCode('R7')).toMatchObject({ elo: 1515, wins: 2, losses: 1, draws: 0, duels: 3, brew_count: null });
+    // The brew count comes with a single recipe (lists skip it to spare D1 reads).
+    expect((await owner.get<{ recipe: RecipeRow }>(`/api/recipes/${byCode('R7')!.id}`)).body.recipe.brew_count).toBe(3);
     expect(byCode('R3')).toMatchObject({ elo: 1514, wins: 3, losses: 2, draws: 0 });
     expect(byCode('R2')).toMatchObject({ wins: 1, losses: 1, draws: 1 });
     expect(byCode('R6')).toMatchObject({ elo: 1500, duels: 0, parent_id: null });

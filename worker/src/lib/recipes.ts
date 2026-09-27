@@ -58,13 +58,13 @@ interface RecipeDbRow {
   bean_name: string | null;
   parent_code: string | null;
   parent_owner_name: string | null;
-  brew_count: number;
+  brew_count: number | null;
 }
 
+// Lists leave out the brew count: counting every recipe's brews reads the team's whole brew history.
 const RECIPE_SELECT = `
   SELECT r.*, m.name AS owner_name, b.name AS bean_name,
-         p.code AS parent_code, pm.name AS parent_owner_name,
-         (SELECT COUNT(*) FROM brews w WHERE w.recipe_id = r.id) AS brew_count
+         p.code AS parent_code, pm.name AS parent_owner_name, NULL AS brew_count
     FROM recipes r
     JOIN members m ON m.id = r.owner_member_id
     LEFT JOIN beans b ON b.id = r.bean_id
@@ -141,12 +141,13 @@ export async function listRecipes(
 
 /** One recipe of the team with its overall standing, or 404. */
 export async function getRecipeRow(db: D1Database, teamId: string, id: string): Promise<RecipeRow> {
-  const [row, duels] = await Promise.all([
+  const [row, duels, count] = await Promise.all([
     db.prepare(`${RECIPE_SELECT} WHERE r.id = ? AND r.team_id = ?`).bind(id, teamId).first<RecipeDbRow>(),
     loadRevealedDuels(db, teamId),
+    db.prepare('SELECT COUNT(*) AS n FROM brews WHERE recipe_id = ? AND team_id = ?').bind(id, teamId).first<{ n: number }>(),
   ]);
   if (!row) throw notFound('recipe');
-  return toRecipeRow(row, replayElo(duels).get(row.id) ?? newStanding());
+  return toRecipeRow({ ...row, brew_count: count?.n ?? 0 }, replayElo(duels).get(row.id) ?? newStanding());
 }
 
 type BrewDbRow = Omit<BrewRow, 'member_initials'>;

@@ -215,7 +215,7 @@ function RecipeForm({ mode, source, draft }: { mode: Mode; source?: RecipeRow; d
     ...(beans.data?.beans.map((b) => ({ value: b.id, label: b.name })) ?? []),
   ];
   const plan = planBrew(toFields(values).fields);
-  const hasHistory = mode.kind === 'edit' && source && (source.brew_count > 0 || source.duels > 0);
+  const hasHistory = mode.kind === 'edit' && source && ((source.brew_count ?? 0) > 0 || source.duels > 0);
   const lockedEdit = mode.kind === 'edit' && source?.locked;
 
   const field = (key: Key) => ({ error: errors[key], changed: isChanged(key) });
@@ -227,7 +227,7 @@ function RecipeForm({ mode, source, draft }: { mode: Mode; source?: RecipeRow; d
         {parent && <p className="banner">{t.cloneBanner}</p>}
         {hasHistory && source && !lockedEdit && (
           <div className="banner warn" style={{ display: 'grid', gap: 10 }}>
-            <span>{t.history(source.display_code, source.brew_count, source.duels)}</span>
+            <span>{t.history(source.display_code, source.brew_count ?? 0, source.duels)}</span>
             <button type="button" className="btn secondary" onClick={() => navigate(`/recipes/new?from=${source.id}`, { replace: true })}>
               {t.cloneInstead}
             </button>

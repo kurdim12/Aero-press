@@ -141,8 +141,8 @@ export const strings = {
     // Consistency
     consistency: 'Consistency',
     consistencyHint: (tds: string, overall: string) =>
-      `Spread (standard deviation) for recipes with 3 or more brews. A spread of ${tds} TDS or ${overall} overall is flagged.`,
-    consistencyEmpty: 'Recipes show here once they have 3 brews.',
+      `Spread (standard deviation) for recipes with 3 or more brews in the last 90 days. A spread of ${tds} TDS or ${overall} overall is flagged.`,
+    consistencyEmpty: 'Recipes show here once they have 3 brews in the last 90 days.',
     spread: (tds: string | null, overall: string | null) =>
       [tds !== null ? `TDS ±${tds}` : null, overall !== null ? `overall ±${overall}` : null].filter(Boolean).join(' · ') || 'No TDS or scores logged',
     brewsCount: (n: number) => `${n} brews`,
@@ -154,7 +154,7 @@ export const strings = {
     activityLegend: { brews: 'Brews', duels: 'Duels' },
     memberVolume: (brews: number, duels: number) => `${brews} ${brews === 1 ? 'brew' : 'brews'} · ${duels} ${duels === 1 ? 'duel' : 'duels'}`,
     lastActive: (days: number | null) =>
-      days === null ? 'No sessions yet' : days === 0 ? 'Active today' : days === 1 ? 'Last session yesterday' : `Last session ${days} days ago`,
+      days === null ? 'No sessions in the last 30 days' : days === 0 ? 'Active today' : days === 1 ? 'Last session yesterday' : `Last session ${days} days ago`,
     // AI
     ai: 'AI coach this month',
     aiLine: (spent: string, cap: string) => `${spent} of ${cap}`,
@@ -176,6 +176,7 @@ export const strings = {
     todayLoading: 'Writing today’s session…',
     todayEmpty: 'No duel suggestions today.',
     todayNeedsRecipes: 'Today’s duels start once the team has two recipes.',
+    todayWrite: 'Suggest today’s duels',
     startDuel: 'Start this duel',
     versus: (a: string, b: string) => `${a} vs ${b}`,
     plan: 'Plan next session',

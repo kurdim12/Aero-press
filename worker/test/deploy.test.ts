@@ -1,12 +1,15 @@
 import { applyD1Migrations, reset } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyPendingMigrations } from '../src/lib/schema';
+import { applyPendingMigrations, resetSchemaCheck } from '../src/lib/schema';
 import { MIGRATIONS } from '../src/migrations.gen';
 import { Client, freshDb } from './helpers';
 
 // A deploy that skipped the migrations: the Worker runs, but its database has no tables.
-beforeEach(() => reset());
+beforeEach(async () => {
+  await reset();
+  resetSchemaCheck();
+});
 
 /** Every table and index with its SQL, except the migrations bookkeeping (compared separately). */
 async function schema() {
@@ -33,6 +36,17 @@ describe('a database the deploy left without tables', () => {
     const again = await client.get('/api/setup/status');
     expect(again.status).toBe(200);
     expect(again.body).toEqual({ needs_setup: true });
+  });
+
+  it('applies a new migration that never makes a query fail (indexes) before the first request', async () => {
+    const latest = MIGRATIONS.at(-1)!;
+    await applyPendingMigrations(env.DB, MIGRATIONS.slice(0, -1));
+    const res = await new Client().get('/api/setup/status');
+    expect(res.status).toBe(200);
+    const recorded = await env.DB.prepare('SELECT name FROM d1_migrations WHERE name = ?').bind(latest.name).first();
+    expect(recorded).not.toBeNull();
+    const index = await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_brews_team_member_created'`).first();
+    expect(index).not.toBeNull();
   });
 
   it('ends up with the same schema and bookkeeping as wrangler, so neither path repeats the other', async () => {

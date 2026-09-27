@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import type { BeanRow, ExperimentsResponse, ReadinessReport, RecipeRow, TodayResponse } from '../../../shared/types';
 import { aiUsageQuery, readinessQuery, streamAnswer, todayQuery } from '../ai';
@@ -10,6 +10,7 @@ import { TopBar } from '../components/TopBar';
 import { formatDate } from '../format';
 import { useOnline } from '../offline/useOnline';
 import { beansQuery, recipesQuery } from '../queries';
+import { useMe } from '../session';
 import { strings } from '../strings';
 
 const c = strings.coach;
@@ -49,30 +50,40 @@ function useSpendRefresh() {
   return () => void qc.invalidateQueries({ queryKey: ['ai-usage'] });
 }
 
+/** Days this page has already asked for the card (member:date), shared by every copy of it. */
+const askedToday = new Set<string>();
+const TODAY_POLL_MS = 4000;
+
 /**
- * Written once per member per day, the first time the card is shown. `quiet` (on the Board) shows
- * nothing unless there is a card or one is being written: the Coach tab explains any problem.
+ * Written once per member per day, the first time the card is shown. The Board and the Coach tab
+ * share one attempt per day on this phone: a failed write isn't retried by itself (the Coach tab
+ * offers "Try again"), and while any phone is writing it, this one waits for that card.
+ * `quiet` (on the Board) shows nothing unless there is a card or one is being written.
  */
 export function TodayCard({ enabled, quiet = false }: { enabled: boolean; quiet?: boolean }) {
   const qc = useQueryClient();
+  const me = useMe();
   const refreshSpend = useSpendRefresh();
-  const today = useQuery(todayQuery);
+  const today = useQuery({ ...todayQuery, refetchInterval: (q) => (q.state.data?.pending ? TODAY_POLL_MS : false) });
   const write = useMutation({
+    mutationKey: ['coach-today-write'],
     mutationFn: () => api<TodayResponse>('POST', '/api/coach/today'),
     onSuccess: (data) => qc.setQueryData(todayQuery.queryKey, data),
     onSettled: refreshSpend,
   });
-  const asked = useRef(false);
+  const writing = useIsMutating({ mutationKey: ['coach-today-write'] }) > 0;
   const { mutate } = write;
+  const key = `${me.member.id}:${new Date().toDateString()}`;
   useEffect(() => {
-    if (enabled && today.data && today.data.session === null && !asked.current) {
-      asked.current = true;
-      mutate();
-    }
-  }, [enabled, today.data, mutate]);
+    const data = today.data;
+    if (!enabled || !data || data.session || data.pending || data.needs_recipes || askedToday.has(key)) return;
+    askedToday.add(key);
+    mutate();
+  }, [enabled, today.data, mutate, key]);
 
   const session = today.data?.session;
-  if (quiet && !session && !write.isPending) return null;
+  const inProgress = writing || Boolean(today.data?.pending);
+  if (quiet && !session && !inProgress) return null;
   return (
     <section className="section">
       <span className="eyebrow">{c.today}</span>
@@ -101,14 +112,24 @@ export function TodayCard({ enabled, quiet = false }: { enabled: boolean; quiet?
             <p className="muted">{c.todayEmpty}</p>
           )}
         </div>
-      ) : write.isPending ? (
+      ) : inProgress ? (
         <p className="muted">{c.todayLoading}</p>
       ) : today.data?.needs_recipes ? (
         <p className="muted">{c.todayNeedsRecipes}</p>
       ) : write.isError ? (
-        <FormError>{errorMessage(write.error)}</FormError>
+        <div className="btn-stack">
+          <FormError>{errorMessage(write.error)}</FormError>
+          <button type="button" className="btn secondary block" disabled={!enabled} onClick={() => mutate()}>
+            {strings.common.retry}
+          </button>
+        </div>
       ) : today.isError ? (
         <FormError>{errorMessage(today.error)}</FormError>
+      ) : today.data ? (
+        // Asked already on this phone today without a card (it failed, or the coach was off): on request only.
+        <button type="button" className="btn secondary block" disabled={!enabled} onClick={() => mutate()}>
+          {c.todayWrite}
+        </button>
       ) : null}
     </section>
   );

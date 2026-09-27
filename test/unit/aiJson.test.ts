@@ -6,6 +6,7 @@ import {
   readinessOutput,
   todayOutput,
 } from '../../shared/schemas';
+import { MAX_TOKENS, MODELS, PRICES, costUsd } from '../../worker/src/ai/config';
 import { extractJson, parseAiJson, usageFromEvents } from '../../worker/src/ai/json';
 
 const experiment = (over: Record<string, unknown> = {}) => ({
@@ -142,5 +143,14 @@ describe('streamed answers', () => {
       '',
     ].join('\n');
     expect(usageFromEvents(events)).toMatchObject({ input_tokens: 900, output_tokens: 42 });
+  });
+});
+
+describe('AI prices', () => {
+  it('has a price for every model the app calls, so no call is ever logged as free', () => {
+    for (const [kind, model] of Object.entries(MODELS)) {
+      expect(PRICES[model], kind).toBeDefined();
+      expect(costUsd(model, 1000, MAX_TOKENS[kind as keyof typeof MODELS]), kind).toBeGreaterThan(0);
+    }
   });
 });

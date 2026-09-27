@@ -162,7 +162,7 @@ describe('team settings', () => {
 
 describe('backup export', () => {
   it('pages every table for the owner and never includes PIN hashes', async () => {
-    const { owner, team, me, a, linaId } = await boardTeam();
+    const { owner, team, me, a, b, c, linaId } = await boardTeam();
     const now = Date.now();
     const statements = Array.from({ length: EXPORT_PAGE + 1 }, (_, i) =>
       env.DB.prepare('INSERT INTO brews (id, team_id, recipe_id, member_id, created_at) VALUES (?, ?, ?, ?, ?)').bind(nextId('bulk'), team, a.id, me.member.id, now - i),
@@ -186,6 +186,23 @@ describe('backup export', () => {
     expect(members.rows).toHaveLength(2);
     expect((await owner.get<ExportPage>('/api/export?part=duel_judges')).body.rows).toHaveLength(5);
     expect((await owner.get<ExportPage>('/api/export?part=duels')).body.rows).toHaveLength(6);
+
+    // A duel still being judged stays out of the backup, cups and votes included: the owner may be judging it.
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO duels (id, team_id, recipe_x_id, recipe_y_id, judge_count, status, created_by, created_at)
+         VALUES ('live-duel', ?, ?, ?, 2, 'judging', ?, ?)`,
+      ).bind(team, a.id, b.id, linaId, now),
+      env.DB.prepare(`INSERT INTO duel_judges (duel_id, member_id) VALUES ('live-duel', ?)`).bind(me.member.id),
+      env.DB.prepare(`INSERT INTO duel_judges (duel_id, member_id) VALUES ('live-duel', ?)`).bind(c.owner_member_id),
+      env.DB.prepare(`INSERT INTO duel_votes (duel_id, judge_member_id, choice, created_at) VALUES ('live-duel', ?, 'x', ?)`).bind(c.owner_member_id, now),
+    ]);
+    const exported = JSON.stringify([
+      (await owner.get<ExportPage>('/api/export?part=duels')).body,
+      (await owner.get<ExportPage>('/api/export?part=duel_judges')).body,
+      (await owner.get<ExportPage>('/api/export?part=duel_votes')).body,
+    ]);
+    expect(exported).not.toContain('live-duel');
     expect((await owner.get('/api/export?part=sessions')).status).toBe(400);
   });
 });
