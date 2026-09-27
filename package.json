@@ -12,6 +12,7 @@
     "db:migrate": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "deploy": "npm run build && wrangler deploy && npm run db:migrate:remote",
+    "gen:migrations": "node scripts/gen-migrations.mjs",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate",
     "test": "vitest run",
     "test:watch": "vitest",

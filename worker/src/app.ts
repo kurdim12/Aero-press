@@ -4,6 +4,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import type { AppEnv } from './env';
 import type { ApiErrorBody } from '../../shared/types';
 import { ApiError } from './lib/errors';
+import { applyPendingMigrations, isSchemaBehind } from './lib/schema';
 import { authRoutes } from './routes/auth';
 import { beanRoutes } from './routes/beans';
 import { brewRoutes } from './routes/brews';
@@ -39,7 +40,7 @@ export function createApp() {
     ),
   );
 
-  app.onError((err, c) => {
+  app.onError(async (err, c) => {
     if (err instanceof ApiError) {
       return c.json<ApiErrorBody>({ error: { code: err.code, message: err.message, ...err.extra } }, err.status);
     }
@@ -51,17 +52,28 @@ export function createApp() {
     }
     // Log for `wrangler tail`. Request bodies (which can hold PINs) are never logged.
     console.error('Unhandled API error', c.req.method, c.req.path, err instanceof Error ? err.stack : String(err));
-    // A deploy that skipped the migrations: the Worker runs but the database has no tables.
-    if (err instanceof Error && /no such table/i.test(err.message)) {
-      return c.json<ApiErrorBody>(
-        {
-          error: {
-            code: 'database_not_ready',
-            message: 'The database has no tables yet. Finish the deploy with `npm run deploy`, which applies the migrations.',
+    // The code is ahead of the database (a deploy that skipped the migrations): catch it up,
+    // then ask for a retry. The app retries reads by itself.
+    if (isSchemaBehind(err)) {
+      try {
+        if ((await applyPendingMigrations(c.env.DB)) > 0) {
+          return c.json<ApiErrorBody>(
+            { error: { code: 'database_updated', message: 'The database was just brought up to date. Try again.' } },
+            503,
+          );
+        }
+      } catch (migrationError) {
+        console.error('Applying migrations failed', migrationError instanceof Error ? migrationError.stack : String(migrationError));
+        return c.json<ApiErrorBody>(
+          {
+            error: {
+              code: 'database_not_ready',
+              message: 'The database is missing tables and couldn’t be brought up to date. Run `npm run deploy`, which applies the migrations.',
+            },
           },
-        },
-        503,
-      );
+          503,
+        );
+      }
     }
     return c.json<ApiErrorBody>(
       {

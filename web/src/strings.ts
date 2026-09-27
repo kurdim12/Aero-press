@@ -524,8 +524,9 @@ export const strings = {
       pin_matches_team: 'The owner PIN must differ from the team PIN. Pick another PIN.',
       pin_matches_owner: 'The team PIN must differ from the owner PIN. Pick another PIN.',
       server_error: 'Something went wrong on our side. Try again in a moment. If it keeps happening, tell the owner.',
+      database_updated: 'The app just set up its database. Try again.',
       database_not_ready:
-        'The app’s database has no tables yet, so it can’t open. The owner needs to finish the deploy (deploy command: npm run deploy).',
+        'The app couldn’t set up its database. Try again in a moment. If this keeps showing, the owner needs to run the deploy again (npm run deploy).',
       not_found: 'That no longer exists. Go back and refresh the list.',
       bean_not_found: 'That bean no longer exists. Pick another bean.',
       parent_not_found: 'The recipe you cloned no longer exists. Go back to the recipe list.',

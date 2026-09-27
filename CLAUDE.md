@@ -57,9 +57,19 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   - The D1 binding has no `database_id`. `wrangler deploy` inherits the Worker's bound database,
     else uses the account's `aeropress-lab`, else creates it (wrangler 4.140 provisioning, on by
     default).
-  - The dashboard deploy command must be `npm run deploy`: build, `wrangler deploy`, then
-    `d1 migrations apply --remote`. Migrations run seconds after the new code is live, so keep
-    them additive.
+  - The Worker migrates its own database. When a query fails with "no such table/column",
+    `onError` runs `applyPendingMigrations` (worker/src/lib/schema.ts). It applies the bundled
+    migrations, one D1 batch each, records them in `d1_migrations` exactly as wrangler does,
+    and answers 503 `database_updated`; the app retries reads by itself.
+    - This was needed because the dashboard deploy command stayed `npx wrangler deploy`, so the
+      first live deploy had no tables.
+    - The bundle is `worker/src/migrations.gen.ts`. After adding or changing a migration, run
+      `npm run gen:migrations`; a unit test fails if the bundle is stale.
+    - `npm run deploy` (build, deploy, `d1 migrations apply --remote`) also works, and each path
+      skips what the other applied.
+    - Migrations may run after the new code is live, so keep them additive. Keep each
+      migration's statement count modest, because a fresh database applies them all in one
+      request.
   - This cloud environment's egress blocks api.cloudflare.com, so nothing deploys from here
     directly.
 

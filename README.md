@@ -50,16 +50,14 @@ To try the flow without your own file, use `test/fixtures/v1-backup.json` (made-
 
 ## Deploy
 
-The app deploys from GitHub through Cloudflare Workers Builds, to the Worker `aero-press`. In the
-Cloudflare dashboard, go to **Workers & Pages › aero-press › Settings › Build** and use:
+The app deploys from GitHub through Cloudflare Workers Builds, to the Worker `aero-press`. Every
+push to the production branch deploys. The first deploy creates the `aeropress-lab` D1 database in
+your Cloudflare account, or reuses one that already has that name.
 
-| Setting | Value |
-| --- | --- |
-| Build command | `npm run build` |
-| Deploy command | `npm run deploy` (builds, deploys, then applies database migrations) |
-
-Every push to the production branch deploys. The first deploy creates the `aeropress-lab` D1
-database in your Cloudflare account, or reuses one that already has that name.
+The app creates and updates its own database tables the first time they're needed, so the default
+deploy command (`npx wrangler deploy`) works. Setting the deploy command to `npm run deploy`
+(**Workers & Pages › aero-press › Settings › Build**) applies the updates as part of the deploy
+instead.
 
 Right after the first deploy, open the site and complete the team setup. Until someone does, the
 setup screen is open to anyone who has the link.
