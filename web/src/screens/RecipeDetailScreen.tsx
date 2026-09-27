@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import type { BrewAverages, BrewRow, RecipeRow } from '../../../shared/types';
 import { WINDOW_S, planBrew } from '../../../shared/phases';
 import { api, errorMessage } from '../api';
+import { RecipeCoachTips } from '../components/CoachTips';
 import { FormError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
 import { useFlash } from '../flash';
@@ -51,6 +52,7 @@ export function RecipeDetailScreen({ id }: { id: string }) {
         )}
         <Hero recipe={recipe} />
         <Actions recipe={recipe} />
+        <RecipeCoachTips recipeId={recipe.id} />
         <section className="section">
           <span className="eyebrow">{d.setup}</span>
           <dl className="kv-list">

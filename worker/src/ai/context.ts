@@ -4,12 +4,18 @@ import type { RecipeRow } from '../../../shared/types';
 import { brewRatio, daysOffRoast } from '../../../shared/formulas';
 import { planBrew } from '../../../shared/phases';
 import type { AuthMember } from '../env';
-import { listRecipes } from '../lib/recipes';
+import { notFound } from '../lib/errors';
+import { listRecipes, recipeBrewAverages } from '../lib/recipes';
 import { TEAM_UTC_OFFSET_MS, localDay } from './config';
+import type { TeamBean } from './experiments';
 
 const RECENT_LIMIT = 40;
 const TEAM_TOP = 15;
 const MAX_RECIPES = 30;
+/** Recipes in the short team notes that go with tips on one bean or recipe. */
+const SNAPSHOT_TOP = 8;
+/** Brews shown with one recipe. */
+const FOCUS_BREWS = 5;
 
 const r2 = (v: number | null | undefined) => (v == null ? null : Math.round(v * 100) / 100);
 
@@ -43,7 +49,7 @@ interface BeanDbRow {
 
 interface BrewDbRow {
   created_at: number;
-  recipe_id: string | null;
+  recipe_id?: string | null;
   bean_name: string | null;
   grind_used: string | null;
   total_time_s: number | null;
@@ -86,6 +92,69 @@ export interface PackData {
 }
 
 const day = (ms: number) => new Date(ms + TEAM_UTC_OFFSET_MS).toISOString().slice(0, 10);
+
+interface TeamDbRow {
+  name: string;
+  champ_name: string | null;
+  champ_date: string | null;
+  comp_coffee_notes: string | null;
+}
+
+const teamRow = (db: D1Database, teamId: string) =>
+  db.prepare('SELECT name, champ_name, champ_date, comp_coffee_notes FROM teams WHERE id = ?').bind(teamId).first<TeamDbRow>();
+
+/** The championship facts every coach call gets. */
+function competitionOf(team: TeamDbRow | null, compCoffee: string | null, now: number): Record<string, unknown> {
+  const daysToGo = team?.champ_date ? Math.ceil((Date.parse(`${team.champ_date}T00:00:00+03:00`) - now) / 86_400_000) : null;
+  return {
+    team: team?.name ?? null,
+    championship: team?.champ_name ?? null,
+    date: team?.champ_date ?? null,
+    days_to_go: daysToGo,
+    competition_coffee: compCoffee,
+    competition_coffee_notes: team?.comp_coffee_notes ?? null,
+  };
+}
+
+const BEAN_COLUMNS = 'id, name, roaster, origin, variety, process, roast_level, roast_date, altitude, density_notes, notes, is_competition_coffee';
+
+/** A coffee as the coach sees it: every detail, and how long since it was roasted. */
+function beanForCoach(b: BeanDbRow, now: number) {
+  return {
+    name: b.name,
+    roaster: b.roaster,
+    origin: b.origin,
+    variety: b.variety,
+    process: b.process,
+    roast_level: b.roast_level,
+    roast_date: b.roast_date,
+    days_off_roast: daysOffRoast(b.roast_date, new Date(now)),
+    altitude: b.altitude,
+    density_notes: b.density_notes,
+    notes: b.notes,
+    competition_coffee: b.is_competition_coffee === 1 || undefined,
+  };
+}
+
+function brewForCoach(w: BrewDbRow, recipeCode?: string | null) {
+  return {
+    day: day(w.created_at),
+    ...(recipeCode !== undefined ? { recipe: recipeCode } : {}),
+    bean: w.bean_name,
+    grind_used: w.grind_used,
+    total_time_s: w.total_time_s,
+    tds_pct: w.tds_pct,
+    beverage_g: w.beverage_g,
+    ey_pct: w.ey_pct,
+    sweetness: w.sweetness,
+    acidity: w.acidity,
+    body: w.body,
+    clarity: w.clarity,
+    finish: w.finish,
+    overall: w.overall,
+    notes: w.notes,
+  };
+}
 
 /** The recipe as the coach sees it: every field, ratio, parent code, Elo, record, brew averages. */
 export function recipeForCoach(r: RecipeRow, averages?: Omit<AverageRow, 'recipe_id'>) {
@@ -141,15 +210,9 @@ export function recipeForCoach(r: RecipeRow, averages?: Omit<AverageRow, 'recipe
 export async function buildContextPack(db: D1Database, me: AuthMember, opts: { recipeLimit?: number } = {}): Promise<PackData> {
   const now = Date.now();
   const [team, beans, recipes, averages, brews, duels] = await Promise.all([
+    teamRow(db, me.team_id),
     db
-      .prepare('SELECT name, champ_name, champ_date, comp_coffee_notes FROM teams WHERE id = ?')
-      .bind(me.team_id)
-      .first<{ name: string; champ_name: string | null; champ_date: string | null; comp_coffee_notes: string | null }>(),
-    db
-      .prepare(
-        `SELECT id, name, roaster, origin, variety, process, roast_level, roast_date, altitude, density_notes, notes, is_competition_coffee
-           FROM beans WHERE team_id = ? ORDER BY is_competition_coffee DESC, updated_at DESC LIMIT 40`,
-      )
+      .prepare(`SELECT ${BEAN_COLUMNS} FROM beans WHERE team_id = ? ORDER BY is_competition_coffee DESC, updated_at DESC LIMIT 40`)
       .bind(me.team_id)
       .all<BeanDbRow>(),
     listRecipes(db, me.team_id),
@@ -194,51 +257,14 @@ export async function buildContextPack(db: D1Database, me: AuthMember, opts: { r
     if (!chosen.includes(r)) chosen.push(r);
   }
   const compBean = beans.results.find((b) => b.is_competition_coffee === 1);
-  const daysToGo = team?.champ_date ? Math.ceil((Date.parse(`${team.champ_date}T00:00:00+03:00`) - now) / 86_400_000) : null;
 
   const pack: ContextPack = {
     today: localDay(now),
     asked_by: { name: me.name, role: me.role },
-    competition: {
-      team: team?.name ?? null,
-      championship: team?.champ_name ?? null,
-      date: team?.champ_date ?? null,
-      days_to_go: daysToGo,
-      competition_coffee: compBean?.name ?? null,
-      competition_coffee_notes: team?.comp_coffee_notes ?? null,
-    },
-    beans: beans.results.map((b) => ({
-      name: b.name,
-      roaster: b.roaster,
-      origin: b.origin,
-      variety: b.variety,
-      process: b.process,
-      roast_level: b.roast_level,
-      roast_date: b.roast_date,
-      days_off_roast: daysOffRoast(b.roast_date, new Date(now)),
-      altitude: b.altitude,
-      density_notes: b.density_notes,
-      notes: b.notes,
-      competition_coffee: b.is_competition_coffee === 1 || undefined,
-    })),
+    competition: competitionOf(team, compBean?.name ?? null, now),
+    beans: beans.results.map((b) => beanForCoach(b, now)),
     recipes: chosen.map((r) => recipeForCoach(r, averagesById.get(r.id))),
-    recent_brews: brews.results.map((w) => ({
-      day: day(w.created_at),
-      recipe: w.recipe_id ? (codeById.get(w.recipe_id) ?? null) : null,
-      bean: w.bean_name,
-      grind_used: w.grind_used,
-      total_time_s: w.total_time_s,
-      tds_pct: w.tds_pct,
-      beverage_g: w.beverage_g,
-      ey_pct: w.ey_pct,
-      sweetness: w.sweetness,
-      acidity: w.acidity,
-      body: w.body,
-      clarity: w.clarity,
-      finish: w.finish,
-      overall: w.overall,
-      notes: w.notes,
-    })),
+    recent_brews: brews.results.map((w) => brewForCoach(w, w.recipe_id ? (codeById.get(w.recipe_id) ?? null) : null)),
     recent_duels: duels.results.map((d) => ({
       day: day(d.revealed_at),
       x: codeById.get(d.recipe_x_id) ?? null,
@@ -259,4 +285,105 @@ export function findRecipeByCode(recipes: RecipeRow[], code: string | null | und
   if (exact) return exact;
   const bare = recipes.filter((r) => r.code.toUpperCase() === wanted);
   return bare.length === 1 ? (bare[0] ?? null) : null;
+}
+
+/** Brew averages for a few recipes (read through the recipe index, not the team's whole history). */
+async function averagesFor(db: D1Database, teamId: string, ids: string[]): Promise<Map<string, AverageRow>> {
+  if (ids.length === 0) return new Map();
+  const { results } = await db
+    .prepare(
+      `SELECT recipe_id, COUNT(*) AS count, AVG(sweetness) AS sweetness, AVG(acidity) AS acidity, AVG(body) AS body,
+              AVG(clarity) AS clarity, AVG(finish) AS finish, AVG(overall) AS overall, AVG(tds_pct) AS tds_pct, AVG(ey_pct) AS ey_pct
+         FROM brews WHERE team_id = ? AND recipe_id IN (${ids.map(() => '?').join(', ')}) GROUP BY recipe_id`,
+    )
+    .bind(teamId, ...ids)
+    .all<AverageRow>();
+  return new Map(results.map((a) => [a.recipe_id, a]));
+}
+
+export interface Snapshot {
+  /** For the prompt: the competition and the team's best recipes. */
+  team: { competition: Record<string, unknown>; recipe_count: number; top_recipes: ReturnType<typeof recipeForCoach>[] };
+  /** Every team recipe, for turning codes the coach writes back into ids. */
+  recipes: RecipeRow[];
+  beans: TeamBean[];
+}
+
+/**
+ * Short team notes for a call about one bean or recipe: the competition and the best recipes
+ * (the locked one first), far lighter than the full pack.
+ */
+export async function teamSnapshot(db: D1Database, teamId: string): Promise<Snapshot> {
+  const now = Date.now();
+  const [team, recipes, beans] = await Promise.all([
+    teamRow(db, teamId),
+    listRecipes(db, teamId),
+    db.prepare('SELECT id, name, is_competition_coffee FROM beans WHERE team_id = ?').bind(teamId).all<TeamBean & { is_competition_coffee: number }>(),
+  ]);
+  const top = [...recipes.filter((r) => r.locked), ...recipes.filter((r) => !r.locked)].slice(0, SNAPSHOT_TOP);
+  const averages = await averagesFor(
+    db,
+    teamId,
+    top.map((r) => r.id),
+  );
+  const compBean = beans.results.find((b) => b.is_competition_coffee === 1);
+  return {
+    team: {
+      competition: competitionOf(team, compBean?.name ?? null, now),
+      recipe_count: recipes.length,
+      top_recipes: top.map((r) => recipeForCoach(r, averages.get(r.id))),
+    },
+    recipes,
+    beans: beans.results.map(({ id, name }) => ({ id, name })),
+  };
+}
+
+const beanRow = (db: D1Database, teamId: string, id: string) =>
+  db.prepare(`SELECT ${BEAN_COLUMNS} FROM beans WHERE id = ? AND team_id = ?`).bind(id, teamId).first<BeanDbRow>();
+
+/** One recipe in full for the coach: its settings and standing, its bean, its parent, its last brews. */
+export async function recipeFocus(db: D1Database, teamId: string, recipe: RecipeRow, recipes: RecipeRow[]) {
+  const parent = recipe.parent_id ? recipes.find((r) => r.id === recipe.parent_id) : undefined;
+  const [averages, brews, bean, parentAverages] = await Promise.all([
+    recipeBrewAverages(db, teamId, recipe.id),
+    db
+      .prepare(
+        `SELECT w.created_at, b.name AS bean_name, w.grind_used, w.total_time_s, w.tds_pct, w.beverage_g, w.ey_pct,
+                w.sweetness, w.acidity, w.body, w.clarity, w.finish, w.overall, w.notes
+           FROM brews w LEFT JOIN beans b ON b.id = w.bean_id
+          WHERE w.team_id = ? AND w.recipe_id = ? ORDER BY w.created_at DESC LIMIT ?`,
+      )
+      .bind(teamId, recipe.id, FOCUS_BREWS)
+      .all<BrewDbRow>(),
+    recipe.bean_id ? beanRow(db, teamId, recipe.bean_id) : null,
+    parent ? recipeBrewAverages(db, teamId, parent.id) : undefined,
+  ]);
+  const now = Date.now();
+  return {
+    ...recipeForCoach(recipe, averages),
+    bean_details: bean ? beanForCoach(bean, now) : null,
+    parent_recipe: parent ? recipeForCoach(parent, parentAverages) : null,
+    last_brews: brews.results.map((w) => brewForCoach(w)),
+  };
+}
+
+/** One coffee in full for the coach: its details, what the team has brewed on it, its recipes. */
+export async function beanFocus(db: D1Database, teamId: string, beanId: string, recipes: RecipeRow[]) {
+  const [bean, stats] = await Promise.all([
+    beanRow(db, teamId, beanId),
+    db
+      .prepare('SELECT COUNT(*) AS brews, AVG(overall) AS overall, AVG(tds_pct) AS tds_pct, AVG(ey_pct) AS ey_pct FROM brews WHERE team_id = ? AND bean_id = ?')
+      .bind(teamId, beanId)
+      .first<{ brews: number; overall: number | null; tds_pct: number | null; ey_pct: number | null }>(),
+  ]);
+  if (!bean) throw notFound('bean');
+  return {
+    ...beanForCoach(bean, Date.now()),
+    brews_logged: stats?.brews ?? 0,
+    brew_averages: stats?.brews ? { overall: r2(stats.overall), tds_pct: r2(stats.tds_pct), ey_pct: r2(stats.ey_pct) } : null,
+    recipes_on_it: recipes
+      .filter((r) => r.bean_id === beanId)
+      .slice(0, SNAPSHOT_TOP)
+      .map((r) => ({ code: r.display_code, name: r.name, elo: r.elo, record: `${r.wins}-${r.losses}-${r.draws}` })),
+  };
 }

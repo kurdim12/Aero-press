@@ -13,6 +13,9 @@ export const MODELS = {
   readiness: 'claude-sonnet-5',
   ask: 'claude-sonnet-5',
   duelRead: 'claude-sonnet-5',
+  beanTips: 'claude-sonnet-5',
+  recipeTips: 'claude-sonnet-5',
+  compare: 'claude-sonnet-5',
   quickLog: 'claude-haiku-4-5-20251001',
   brewRead: 'claude-haiku-4-5-20251001',
 } as const;
@@ -27,6 +30,9 @@ export const KIND_ROLE: Record<AiKind, ModelRole> = {
   readiness: 'coach',
   ask: 'coach',
   duelRead: 'coach',
+  beanTips: 'coach',
+  recipeTips: 'coach',
+  compare: 'coach',
   quickLog: 'quick',
   brewRead: 'quick',
 };
@@ -47,6 +53,9 @@ export const MAX_TOKENS: Record<AiKind, number> = {
   readiness: 6000,
   ask: 8000,
   duelRead: 3000,
+  beanTips: 3000,
+  recipeTips: 3000,
+  compare: 2500,
   quickLog: 3000,
   brewRead: 1500,
 };
@@ -62,6 +71,9 @@ export const EFFORT: Partial<Record<AiKind, 'low' | 'medium' | 'high'>> = {
   ask: 'medium',
   today: 'low',
   duelRead: 'low',
+  beanTips: 'low',
+  recipeTips: 'low',
+  compare: 'low',
 };
 
 /** The team's months run on Amman time (UTC+3 all year since 2022). */

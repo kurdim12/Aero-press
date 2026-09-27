@@ -2,11 +2,12 @@
 // Anthropic, called from the Worker only; keys never reach the browser), then tokens and cost
 // logged in ai_calls.
 import Anthropic from '@anthropic-ai/sdk';
+import type { Context } from 'hono';
 import type { z } from 'zod';
 import { type ModelRole, OPENROUTER_DEFAULTS, OPENROUTER_MODEL_IDS } from '../../../shared/aiModels';
 import type { AiUsage } from '../../../shared/types';
 import { chatStreamUsage } from '../../../shared/aiStream';
-import type { AuthMember } from '../env';
+import type { AppEnv, AuthMember } from '../env';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { type AiKind, EFFORT, KIND_ROLE, MAX_TOKENS, MODELS, costUsd, monthStart } from './config';
@@ -23,7 +24,11 @@ export interface AiScope {
   member: AuthMember;
 }
 
-function setupOf(scope: AiScope): AiSetup {
+/** The scope of a request's AI calls: its database, the provider set up in Cloudflare, the member. */
+export const aiScope = (c: Context<AppEnv>): AiScope => ({ db: c.env.DB, ai: aiSetup(c.env), member: c.get('member') });
+
+/** The provider, or 503 `ai_not_configured` until the owner adds a key. */
+export function requireAi(scope: AiScope): AiSetup {
   if (!scope.ai) {
     throw new ApiError(503, 'ai_not_configured', 'The AI coach isn’t set up yet. The owner needs to add an OpenRouter or Anthropic API key in Cloudflare (see the README).');
   }
@@ -183,7 +188,7 @@ function anthropicParams(model: string, kind: AiKind, system: string, user: stri
  * wait for the first bytes, so a long answer is never cut off (and then paid for again).
  */
 export async function askText(scope: AiScope, kind: AiKind, system: string, user: string): Promise<string> {
-  const setup = setupOf(scope);
+  const setup = requireAi(scope);
   const model = modelFor(setup, kind, await checkBudget(scope));
   const reservation = await reserve(scope, kind, model, system, user);
 
@@ -246,7 +251,7 @@ export async function askStream(
   system: string,
   user: string,
 ): Promise<{ body: ReadableStream<Uint8Array>; done: Promise<void> }> {
-  const setup = setupOf(scope);
+  const setup = requireAi(scope);
   const model = modelFor(setup, kind, await checkBudget(scope));
   const reservation = await reserve(scope, kind, model, system, user);
   let upstream: Response;

@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { OPENROUTER_MODEL_IDS } from './aiModels';
 import { BREW_LIMITS } from './limits';
-import { DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS } from './types';
+import { DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS, TIPS_SUBJECTS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
 
@@ -168,6 +168,7 @@ export const teamSettingsInput = z.object({
     .max(AI_BUDGET_MAX_USD, `Keep the budget at $${AI_BUDGET_MAX_USD} or less.`),
   ai_coach_model: z.enum(OPENROUTER_MODEL_IDS, { error: 'Pick a model from the list.' }).nullable().optional(),
   ai_quick_model: z.enum(OPENROUTER_MODEL_IDS, { error: 'Pick a model from the list.' }).nullable().optional(),
+  ai_auto_tips: z.boolean({ error: 'Turn automatic tips on or off.' }).optional(),
 });
 export type TeamSettingsInput = z.input<typeof teamSettingsInput>;
 
@@ -366,7 +367,21 @@ export const adaptInput = z.object({
 
 export const askInput = z.object({
   question: z.string({ error: 'Type a question.' }).trim().min(1, 'Type a question.').max(1000, 'Keep the question under 1000 characters.'),
+  /** The bean or recipe the question is about ("Ask the coach about this"). */
+  about: z.object({ kind: z.enum(TIPS_SUBJECTS), id }).optional(),
 });
+export type AskInput = z.input<typeof askInput>;
+
+/** Write the coach's tips on a bean or recipe. Without `refresh`, tips already written are kept. */
+export const tipsInput = z.object({
+  refresh: z.boolean().optional(),
+});
+export type TipsInput = z.input<typeof tipsInput>;
+
+export const compareInput = z
+  .object({ a: id, b: id })
+  .refine((v) => v.a !== v.b, { message: 'Pick two different recipes.', path: ['b'] });
+export type CompareInput = z.input<typeof compareInput>;
 
 export const quickLogInput = z.object({
   text: z.string({ error: 'Type or say the brew first.' }).trim().min(1, 'Type or say the brew first.').max(1000, 'Keep it under 1000 characters.'),
@@ -389,7 +404,7 @@ export const recipeChanges = z
   .object({
     name: changeText(80),
     bean_id: changeText(100),
-    method: z.enum(METHODS),
+    method: z.preprocess((v) => (typeof v === 'string' ? (METHODS.find((m) => m.toLowerCase() === v.trim().toLowerCase()) ?? v) : v), z.enum(METHODS)),
     filter: changeText(60),
     dose_g: changeNumber(1, 100),
     water_g: changeNumber(1, 1000),
@@ -441,6 +456,28 @@ export const todayOutput = z.object({
 export const duelReadOutput = z.object({
   read: aiText(1500),
   next_test: experimentOutput.nullable(),
+});
+
+/** A list the card shows at most `max` of: extra items are dropped rather than paid for with a retry. */
+const upTo = <T extends z.ZodType>(item: T, max: number) => z.array(item).transform((items) => items.slice(0, max));
+
+export const beanTipsOutput = z.object({
+  summary: aiText(1200),
+  tips: upTo(aiText(500), 4).refine((tips) => tips.length > 0, 'Give 2 to 4 tips.'),
+  start: experimentOutput.nullable(),
+});
+
+export const recipeTipsOutput = z.object({
+  verdict: aiText(800),
+  tips: upTo(z.object({ title: aiText(120), detail: aiText(700) }), 4).refine((tips) => tips.length > 0, 'Give 2 to 4 tips.'),
+  checks: upTo(aiText(400), 3),
+  next_test: experimentOutput.nullable(),
+});
+
+export const compareOutput = z.object({
+  read: aiText(1500),
+  effects: upTo(z.object({ change: aiText(200), effect: aiText(600) }), 6),
+  duel: aiText(600),
 });
 
 // A quick log never fails on one odd field: anything unreadable becomes null ("leave it empty").

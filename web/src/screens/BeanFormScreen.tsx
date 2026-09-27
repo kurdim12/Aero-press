@@ -5,8 +5,10 @@ import type { BeanRow } from '../../../shared/types';
 import type { BeanInput } from '../../../shared/schemas';
 import { daysOffRoast } from '../../../shared/formulas';
 import { ApiError, api, errorMessage } from '../api';
+import { BeanCoachTips } from '../components/CoachTips';
 import { FormError, TextAreaField, TextField, ToggleField, useRevealFirstError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
+import { setFlash, useFlash } from '../flash';
 import { beanQuery, invalidateLibrary } from '../queries';
 import { useIsOwner } from '../session';
 import { strings } from '../strings';
@@ -95,12 +97,20 @@ function BeanForm({ bean }: { bean?: BeanRow }) {
 
   const set = <K extends keyof Values>(key: K) => (value: Values[K]) => setValues((v) => ({ ...v, [key]: value }));
 
+  const flash = useFlash();
   const save = useMutation({
     mutationFn: (body: BeanInput) =>
       bean ? api<BeanRow>('PUT', `/api/beans/${bean.id}`, body) : api<BeanRow>('POST', '/api/beans', body),
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
       await invalidateLibrary(qc);
-      navigate('/beans');
+      if (bean) {
+        navigate('/beans');
+        return;
+      }
+      // A new coffee opens its own page, where the coach's tips on it appear.
+      qc.setQueryData(beanQuery(saved.id).queryKey, saved);
+      setFlash(f.added(saved.name));
+      navigate(`/beans/${saved.id}`, { replace: true });
     },
     onError: (err) => {
       if (err instanceof ApiError && err.field) setErrors({ [err.field]: err.message });
@@ -126,8 +136,15 @@ function BeanForm({ bean }: { bean?: BeanRow }) {
     <>
       <TopBar title={bean ? f.editTitle : f.newTitle} backHref="/beans" />
       <main className="page shell-main">
+        {flash && (
+          <p className="notice" role="status" style={{ marginTop: 8 }}>
+            {flash}
+          </p>
+        )}
+        {bean && <BeanCoachTips beanId={bean.id} />}
         <form className="form" onSubmit={submit} noValidate>
-          <div className="form-section" style={{ paddingTop: 8 }}>
+          <div className="form-section" style={bean ? undefined : { paddingTop: 8 }}>
+            {bean && <span className="eyebrow">{f.details}</span>}
             <TextField
               label={f.name}
               placeholder={f.namePlaceholder}

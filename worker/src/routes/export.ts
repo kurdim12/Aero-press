@@ -16,6 +16,7 @@ const BY_ID: Partial<Record<ExportPart, string>> = {
   // Only finished duels: while one runs, its cups and votes are secret even from the owner (who may judge).
   duels: `SELECT * FROM duels WHERE team_id = ?1 AND status IN ('revealed', 'cancelled') AND id > ?2 ORDER BY id LIMIT ?3`,
   readiness_reports: 'SELECT * FROM readiness_reports WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
+  ai_tips: 'SELECT id, team_id, subject, subject_id, tips_json, tips_at, member_id, created_at FROM ai_tips WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
   ai_calls: 'SELECT * FROM ai_calls WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3',
   members: `SELECT id, team_id, name, role, active, (role = 'barista' AND pin_hash IS NOT NULL) AS has_personal_pin, created_at
               FROM members WHERE team_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3`,
@@ -39,7 +40,8 @@ exportRoutes.get('/', async (c) => {
   if (part === 'team') {
     const row = await db
       .prepare(
-        'SELECT id, name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, created_at FROM teams WHERE id = ?',
+        `SELECT id, name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, ai_auto_tips, created_at
+           FROM teams WHERE id = ?`,
       )
       .bind(team)
       .first<Record<string, unknown>>();

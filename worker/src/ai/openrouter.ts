@@ -37,6 +37,9 @@ const EFFORT: Record<AiKind, 'low' | 'medium'> = {
   ask: 'medium',
   today: 'low',
   duelRead: 'low',
+  beanTips: 'low',
+  recipeTips: 'low',
+  compare: 'low',
   quickLog: 'low',
   brewRead: 'low',
 };

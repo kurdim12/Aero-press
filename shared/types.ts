@@ -371,6 +371,56 @@ export interface DuelReadResponse {
   pending: boolean;
 }
 
+/** The coach's first look at a coffee: how it will likely brew, tips, and a recipe to start from. */
+export interface BeanTips {
+  summary: string;
+  tips: string[];
+  /** A starting recipe for this coffee, usually from the team's best one (null if none fits). */
+  start: Experiment | null;
+}
+
+export interface RecipeTip {
+  title: string;
+  detail: string;
+}
+
+/** The coach's review of one recipe: a verdict, tips, watch-outs and one test to run next. */
+export interface RecipeTips {
+  verdict: string;
+  tips: RecipeTip[];
+  /** Things to check before duelling it (timing, ratio, gaps in the recipe). */
+  checks: string[];
+  next_test: Experiment | null;
+}
+
+export const TIPS_SUBJECTS = ['bean', 'recipe'] as const;
+export type TipsSubject = (typeof TIPS_SUBJECTS)[number];
+
+export interface TipsResponse<T> {
+  tips: T | null;
+  /** When the tips were written. */
+  at: number | null;
+  /** Another phone is writing them now; ask again in a few seconds. */
+  pending: boolean;
+  /** The bean or recipe was edited after these tips were written. */
+  stale: boolean;
+  /** An AI key is set up. */
+  configured: boolean;
+  /** Write them now without a tap: it's new (under a day old), automatic tips are on, none yet. */
+  auto: boolean;
+}
+
+export type BeanTipsResponse = TipsResponse<BeanTips>;
+export type RecipeTipsResponse = TipsResponse<RecipeTips>;
+
+/** What the differences between two recipes are likely to do in the cup. */
+export interface CompareRead {
+  read: string;
+  effects: { change: string; effect: string }[];
+  /** What to taste for when the two meet in a duel. */
+  duel: string;
+}
+
 export interface QuickLogMatch {
   id: string | null;
   confidence: number;
@@ -501,6 +551,8 @@ export interface TeamSettings {
   /** OpenRouter model picks per role (null = the default). Unused on an Anthropic key. */
   ai_coach_model: string | null;
   ai_quick_model: string | null;
+  /** The coach writes tips on its own when a bean or recipe is added. */
+  ai_auto_tips: boolean;
 }
 
 /** Backup parts, one table each, so no single request builds the whole file. */
@@ -514,6 +566,7 @@ export const EXPORT_PARTS = [
   'duel_judges',
   'duel_votes',
   'readiness_reports',
+  'ai_tips',
   'ai_calls',
 ] as const;
 export type ExportPart = (typeof EXPORT_PARTS)[number];

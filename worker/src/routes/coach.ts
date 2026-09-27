@@ -1,7 +1,8 @@
-import { Hono, type Context } from 'hono';
+import { Hono } from 'hono';
 import type { AppEnv } from '../env';
 import type {
   AiUsage,
+  CompareRead,
   ExperimentsResponse,
   QuickLogResponse,
   ReadinessReport,
@@ -11,6 +12,8 @@ import type {
 import {
   adaptInput,
   askInput,
+  compareInput,
+  compareOutput,
   experimentsOutput,
   planInput,
   quickLogInput,
@@ -19,9 +22,9 @@ import {
   todayOutput,
 } from '../../../shared/schemas';
 import { requireMember } from '../middleware/auth';
-import { type AiScope, aiSetup, aiUsage, askJson, askStream, monthSpend } from '../ai/client';
+import { aiScope, aiSetup, aiUsage, askJson, askStream, monthSpend } from '../ai/client';
 import { localDay } from '../ai/config';
-import { buildContextPack, findRecipeByCode } from '../ai/context';
+import { beanFocus, buildContextPack, findRecipeByCode, recipeFocus, recipeForCoach } from '../ai/context';
 import { toExperiment, type TeamBean } from '../ai/experiments';
 import {
   ASK_INSTRUCTIONS,
@@ -29,21 +32,23 @@ import {
   QUICK_LOG_SYSTEM,
   READINESS_PROMPT,
   TODAY_PROMPT,
+  aboutBlock,
   adaptPrompt,
+  comparePrompt,
   dataBlock,
   planPrompt,
   quickLogUser,
 } from '../ai/prompts';
 import { notFound } from '../lib/errors';
 import { newId } from '../lib/ids';
-import { displayCode } from '../lib/recipes';
+import { displayCode, listRecipes, recipeBrewAverages } from '../lib/recipes';
 import { readJson } from '../lib/validate';
 
 // The AI coach. Every call checks the month's budget first and logs its tokens and cost.
 export const coachRoutes = new Hono<AppEnv>();
 coachRoutes.use('*', requireMember);
 
-const scopeOf = (c: Context<AppEnv>): AiScope => ({ db: c.env.DB, ai: aiSetup(c.env), member: c.get('member') });
+const scopeOf = aiScope;
 
 async function teamBeans(db: D1Database, teamId: string): Promise<TeamBean[]> {
   const { results } = await db.prepare('SELECT id, name FROM beans WHERE team_id = ?').bind(teamId).all<TeamBean>();
@@ -207,16 +212,71 @@ coachRoutes.post('/readiness', async (c) => {
   return c.json<{ report: ReadinessReport }>({ report: { id, member_name: scope.member.name, created_at: now, ...out } });
 });
 
-/** Ask anything: the answer streams back as Anthropic's event stream (the app reads the text). */
+/**
+ * Ask anything: the answer streams back in the provider's event format (the app reads the text).
+ * `about` (from "Ask the coach about this") adds that bean or recipe in full.
+ */
 coachRoutes.post('/ask', async (c) => {
-  const { question } = await readJson(c, askInput);
+  const { question, about } = await readJson(c, askInput);
   const scope = scopeOf(c);
-  const { pack } = await buildContextPack(scope.db, scope.member);
-  const { body, done } = await askStream(scope, 'ask', COACH_SYSTEM, `${dataBlock(pack)}\n\n${ASK_INSTRUCTIONS}\n\n<question>\n${question}\n</question>`);
+  const team = scope.member.team_id;
+  const { pack, recipes } = await buildContextPack(scope.db, scope.member);
+  let focus: string | null = null;
+  if (about?.kind === 'recipe') {
+    const recipe = recipes.find((r) => r.id === about.id);
+    if (!recipe) throw notFound('recipe');
+    focus = aboutBlock('recipe', await recipeFocus(scope.db, team, recipe, recipes));
+  } else if (about?.kind === 'bean') {
+    focus = aboutBlock('bean', await beanFocus(scope.db, team, about.id, recipes));
+  }
+  const user = [dataBlock(pack), focus, ASK_INSTRUCTIONS, `<question>\n${question}\n</question>`].filter(Boolean).join('\n\n');
+  const { body, done } = await askStream(scope, 'ask', COACH_SYSTEM, user);
   c.executionCtx.waitUntil(done);
   return new Response(body, {
     headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
   });
+});
+
+/** The settings two recipes differ in, with each one's value (the bean by name). */
+const COMPARE_KEYS = [
+  'bean',
+  'method',
+  'filter',
+  'dose_g',
+  'water_g',
+  'ratio',
+  'temp_c',
+  'grinder',
+  'grind_setting',
+  'water_recipe',
+  'bloom_water_g',
+  'bloom_ends_s',
+  'agitation',
+  'press_starts_s',
+  'press_duration_s',
+  'bypass_g',
+  'bypass_temp',
+  'other_steps',
+  'planned_total_s',
+] as const;
+
+const comparable = (v: unknown) => (typeof v === 'string' ? v.trim().toLowerCase() : (v ?? null));
+
+/** What the differences between two recipes are likely to do in the cup (from the compare screen). */
+coachRoutes.post('/compare', async (c) => {
+  const input = await readJson(c, compareInput);
+  const scope = scopeOf(c);
+  const team = scope.member.team_id;
+  const recipes = await listRecipes(scope.db, team);
+  const a = recipes.find((r) => r.id === input.a);
+  const b = recipes.find((r) => r.id === input.b);
+  if (!a || !b) throw notFound('recipe');
+  const [avgA, avgB] = await Promise.all([recipeBrewAverages(scope.db, team, a.id), recipeBrewAverages(scope.db, team, b.id)]);
+  const ca = recipeForCoach(a, avgA);
+  const cb = recipeForCoach(b, avgB);
+  const differences = COMPARE_KEYS.filter((k) => comparable(ca[k]) !== comparable(cb[k])).map((k) => ({ setting: k, a: ca[k], b: cb[k] }));
+  const out = await askJson(scope, 'compare', compareOutput, COACH_SYSTEM, comparePrompt({ a: ca, b: cb, differences }));
+  return c.json<CompareRead>(out);
 });
 
 /** Quick log: a typed or spoken note turned into brew-log fields for the barista to confirm. */

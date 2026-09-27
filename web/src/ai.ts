@@ -2,6 +2,7 @@
 import { queryOptions } from '@tanstack/react-query';
 import { deltaText, isStreamError, parseDataLine } from '../../shared/aiStream';
 import type { AiUsage, Experiment, ReadinessReport, TodayResponse } from '../../shared/types';
+import type { AskInput } from '../../shared/schemas';
 import { ApiError, api, apiErrorFrom } from './api';
 import { stashRecipeDraft } from './drafts';
 import { strings } from './strings';
@@ -30,15 +31,18 @@ export function experimentHref(e: Experiment): string {
   return e.parent_id ? `/recipes/new?from=${encodeURIComponent(e.parent_id)}&draft=${key}` : `/recipes/new?draft=${key}`;
 }
 
-/** Ask the coach and read the streamed answer; `onText` gets the answer so far. */
-export async function streamAnswer(question: string, onText: (text: string) => void): Promise<void> {
+/**
+ * Ask the coach and read the streamed answer; `onText` gets the answer so far. `about` is the bean
+ * or recipe the question is about, if it came from "Ask the coach" on its page.
+ */
+export async function streamAnswer(question: string, onText: (text: string) => void, about?: AskInput['about']): Promise<void> {
   let res: Response;
   try {
     res = await fetch('/api/coach/ask', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify(about ? { question, about } : { question }),
     });
   } catch {
     throw new ApiError(0, 'offline', strings.errors.offline);

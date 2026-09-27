@@ -1,6 +1,6 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AiUsage, ExperimentsResponse, QuickLogResponse, RecipeRow, TeamSettings } from '../../shared/types';
+import type { AiUsage, CompareRead, ExperimentsResponse, QuickLogResponse, RecipeRow, RecipeTipsResponse, TeamSettings } from '../../shared/types';
 import { aiTransport } from '../src/ai/client';
 import { OPENROUTER_URL } from '../src/ai/openrouter';
 import { freshDb, recipeBody, setupTeam } from './helpers';
@@ -187,5 +187,38 @@ describe('OpenRouter', () => {
     await vi.waitFor(async () => {
       expect((await spendRows()).results).toEqual([{ kind: 'ask', model: 'google/gemini-3.8-flash', input_tokens: 1200, output_tokens: 40, cost_usd: 0.00105 }]);
     });
+  });
+
+  it('writes recipe tips and comparisons with the owner’s coach model, thinking little', async () => {
+    const { owner, r1 } = await team();
+    await owner.put('/api/team', settings({ ai_coach_model: 'deepseek/deepseek-v4-pro-0813' }));
+    const r2 = (await owner.get<{ recipes: RecipeRow[] }>('/api/recipes')).body.recipes.find((r) => r.id !== r1.id)!;
+    replies.push(
+      reply(
+        JSON.stringify({
+          verdict: 'Sweet and clean.',
+          tips: [
+            { title: 'Finer', detail: 'Two clicks finer.' },
+            { title: 'Cooler', detail: 'Try 88 °C.' },
+          ],
+          checks: [],
+          next_test: null,
+        }),
+      ),
+    );
+    const tips = await owner.post<RecipeTipsResponse>(`/api/recipes/${r1.id}/tips`, {});
+    expect(tips.status).toBe(200);
+    expect(tips.body.tips).toMatchObject({ verdict: 'Sweet and clean.', checks: [], next_test: null });
+    expect(calls[0]!.body).toMatchObject({ model: 'deepseek/deepseek-v4-pro-0813', max_tokens: 3000, reasoning: { effort: 'low', exclude: true } });
+
+    replies.push(reply(JSON.stringify({ read: 'The cooler one is softer.', effects: [], duel: 'Taste them cool.' })));
+    const compare = await owner.post<CompareRead>('/api/coach/compare', { a: r1.id, b: r2.id });
+    expect(compare.body.duel).toBe('Taste them cool.');
+    expect(calls[1]!.body).toMatchObject({ model: 'deepseek/deepseek-v4-pro-0813', max_tokens: 2500, reasoning: { effort: 'low' } });
+    const kinds = (await spendRows()).results.map((r) => [r.kind, r.model, r.cost_usd]);
+    expect(kinds).toEqual([
+      ['recipeTips', 'deepseek/deepseek-v4-pro-0813', 0.0049],
+      ['compare', 'deepseek/deepseek-v4-pro-0813', 0.0049],
+    ]);
   });
 });

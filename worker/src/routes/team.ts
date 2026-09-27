@@ -16,15 +16,22 @@ meRoutes.get('/', async (c) => c.json<MeResponse>(await meResponse(c.env.DB, c.g
 export const teamRoutes = new Hono<AppEnv>();
 teamRoutes.use('*', requireMember);
 
-const SETTINGS_SELECT =
-  'SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model FROM teams WHERE id = ?';
+type SettingsRow = Omit<TeamSettings, 'ai_auto_tips'> & { ai_auto_tips: number };
 
-/** Team name, championship details and the AI budget. Everyone may read them. */
-teamRoutes.get('/', async (c) => {
-  const row = await c.env.DB.prepare(SETTINGS_SELECT).bind(c.get('member').team_id).first<TeamSettings>();
+async function readSettings(db: D1Database, teamId: string): Promise<TeamSettings> {
+  const row = await db
+    .prepare(
+      `SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, ai_auto_tips
+         FROM teams WHERE id = ?`,
+    )
+    .bind(teamId)
+    .first<SettingsRow>();
   if (!row) throw notFound('team');
-  return c.json<TeamSettings>(row);
-});
+  return { ...row, ai_auto_tips: row.ai_auto_tips === 1 };
+}
+
+/** Team name, championship details and the AI settings. Everyone may read them. */
+teamRoutes.get('/', async (c) => c.json<TeamSettings>(await readSettings(c.env.DB, c.get('member').team_id)));
 
 /** Owner saves the team settings (the whole form each time). */
 teamRoutes.put('/', requireOwner, async (c) => {
@@ -32,12 +39,13 @@ teamRoutes.put('/', requireOwner, async (c) => {
   const me = c.get('member');
   const budget = Math.round(input.ai_monthly_budget_usd * 100) / 100;
   const db = c.env.DB;
-  // Model picks are optional in the body: leaving them out keeps what's saved.
+  // The AI fields are optional in the body: leaving one out keeps what's saved.
   await db
     .prepare(
       `UPDATE teams SET name = ?, champ_name = ?, champ_date = ?, comp_coffee_notes = ?, ai_monthly_budget_usd = ?,
               ai_coach_model = CASE WHEN ? THEN ? ELSE ai_coach_model END,
-              ai_quick_model = CASE WHEN ? THEN ? ELSE ai_quick_model END
+              ai_quick_model = CASE WHEN ? THEN ? ELSE ai_quick_model END,
+              ai_auto_tips = CASE WHEN ? THEN ? ELSE ai_auto_tips END
         WHERE id = ?`,
     )
     .bind(
@@ -50,12 +58,12 @@ teamRoutes.put('/', requireOwner, async (c) => {
       input.ai_coach_model ?? null,
       input.ai_quick_model !== undefined ? 1 : 0,
       input.ai_quick_model ?? null,
+      input.ai_auto_tips !== undefined ? 1 : 0,
+      input.ai_auto_tips ? 1 : 0,
       me.team_id,
     )
     .run();
-  const row = await db.prepare(SETTINGS_SELECT).bind(me.team_id).first<TeamSettings>();
-  if (!row) throw notFound('team');
-  return c.json<TeamSettings>(row);
+  return c.json<TeamSettings>(await readSettings(db, me.team_id));
 });
 
 /** Owner changes the team PIN. Existing sessions stay signed in. */

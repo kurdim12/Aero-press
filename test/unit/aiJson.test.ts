@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  beanTipsOutput,
+  compareOutput,
   duelReadOutput,
   experimentsOutput,
   quickLogOutput,
   readinessOutput,
+  recipeTipsOutput,
   todayOutput,
 } from '../../shared/schemas';
 import { OPENROUTER_DEFAULTS, OPENROUTER_MODELS } from '../../shared/aiModels';
@@ -183,5 +186,30 @@ describe('streamed answers from either provider', () => {
     const text = [': OPENROUTER PROCESSING', '', chat('say \"usage\" here'), '', usage, '', 'data: [DONE]', ''].join('\n');
     expect(chatStreamUsage(text)).toEqual({ prompt_tokens: 1200, completion_tokens: 40, cost: 0.00105 });
     expect(chatStreamUsage(chat('no usage yet'))).toBeNull();
+  });
+});
+
+describe('tips and compare replies', () => {
+  it('keeps the first items of an over-long list instead of failing', () => {
+    const bean = parseAiJson(beanTipsOutput, JSON.stringify({ summary: 'Bright.', tips: ['a', 'b', 'c', 'd', 'e'], start: null }));
+    expect(bean.ok && bean.data.tips).toEqual(['a', 'b', 'c', 'd']);
+    const tip = { title: 'Finer', detail: 'One click.' };
+    const recipe = parseAiJson(recipeTipsOutput, JSON.stringify({ verdict: 'Good.', tips: [tip, tip, tip, tip, tip], checks: ['1', '2', '3', '4'], next_test: null }));
+    expect(recipe.ok && [recipe.data.tips.length, recipe.data.checks.length]).toEqual([4, 3]);
+    const effects = Array.from({ length: 8 }, (_, i) => ({ change: `c${i}`, effect: 'e' }));
+    const compare = parseAiJson(compareOutput, JSON.stringify({ read: 'Close.', effects, duel: 'Taste.' }));
+    expect(compare.ok && compare.data.effects.length).toBe(6);
+    // No tips at all is still wrong, and says so.
+    expect(parseAiJson(beanTipsOutput, JSON.stringify({ summary: 'x', tips: [], start: null }))).toMatchObject({ ok: false, error: 'tips: Give 2 to 4 tips.' });
+  });
+});
+
+describe('experiment changes', () => {
+  it('reads the method in any letter case, and nothing else', () => {
+    const parse = (method: unknown) =>
+      parseAiJson(duelReadOutput, JSON.stringify({ read: 'x', next_test: { title: 't', parent: null, changes: { method }, why: 'w', listenFor: 'l' } }));
+    const inverted = parse(' inverted ');
+    expect(inverted.ok && inverted.data.next_test?.changes.method).toBe('Inverted');
+    expect(parse('upside down').ok).toBe(false);
   });
 });

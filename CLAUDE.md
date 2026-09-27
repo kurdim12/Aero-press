@@ -40,7 +40,8 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
 - Session cookie `ap_session`: HttpOnly, SameSite=Lax, 30-day fixed expiry, Secure everywhere
   except plain-http local/private-network hosts (so LAN phone testing works in dev).
 - Schema additions beyond the brief: `teams.pin_hash/pin_salt`, `login_attempts.first_failed_at`,
-  `duel_judges` table, `duels.rematch_of`.
+  `duel_judges` table, `duels.rematch_of`, `teams.ai_coach_model/ai_quick_model/ai_auto_tips`,
+  `ai_tips` table.
 - Hosting: the user stays on **Workers Free** (decided after checkpoint 1; they have the Cloudflare
   Pro *website* plan, which doesn't include Workers Paid). Free allows 10 ms of CPU per request.
   So PIN hashes use 20k PBKDF2 rounds (`PIN_HASH_ITERATIONS` in `worker/src/config.ts`), a
@@ -199,6 +200,33 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
     chunks, skipping `: OPENROUTER PROCESSING` comments and `[DONE]`.
   - Quality claims about other models are the vendors' own. The owner can switch in Settings, and
     every JSON answer is still checked with zod, with one retry.
+- AI across the app (the user asked for the coach beyond the Coach tab):
+  - Tips on one bean or recipe live in `ai_tips`, one row per subject. The row id is
+    `'<subject>:<id>'` and holds the latest tips only. Code: `worker/src/ai/tips.ts`, and on the
+    web `components/CoachTips.tsx`.
+  - Beans get a summary, 2–4 tips, and a starting recipe with the bean forced. Recipes get a
+    verdict, 2–4 tips, up to 3 checks, and a next test with the parent forced to that recipe.
+  - Claims: `claim = 'pending:<ms>'` (stale after 6 minutes) is taken with a conditional write on
+    the row exactly as it was read (`claim IS ? AND tips_at IS ?`, or `INSERT OR IGNORE`).
+    - The final write lands only while the claim holds, and a failure frees it.
+    - Without `refresh`, a POST returns tips that already exist. A pending POST answers 202.
+    - The work also goes to `waitUntil`, so a phone that closes mid-answer doesn't waste the call.
+  - Automatic tips are asked for by the phone, not written in `waitUntil` on create, because
+    `waitUntil` only runs about 30 s past the response and a coach answer can take longer.
+    - The server says `auto` when the subject is under a day old, has no tips and no claim, a key
+      is set, and `teams.ai_auto_tips` is on.
+    - The phone tries once per subject per app session. After a failure it waits for a tap.
+  - A bean or recipe edited after its tips (`updated_at > tips_at`) shows them as `stale`.
+  - A new bean opens its own page (`/beans/:id`), where the tips are.
+  - Prompts send short team notes (`teamSnapshot`: competition facts and the top 8 recipes, with
+    averages read through the recipe index) plus the subject in full (`recipeFocus`/`beanFocus`),
+    not the whole context pack.
+  - `POST /api/coach/compare {a, b}`: the settings that differ, plus both recipes with records
+    and averages. The phone caches the answer per pair.
+  - `POST /api/coach/ask` takes `about: {kind, id}` (the Coach tab's `?about=recipe:<id>`), which
+    adds that subject's focus block. The question box then comes first, prefilled.
+  - The new kinds `beanTips`, `recipeTips` and `compare` use the coach role at low effort. The
+    backup includes `ai_tips`, without the claim column.
 - Champion recipes (`shared/champions.ts`, screens under `/recipes/champions`): WAC podium recipes
   researched from the official WAC and aeropress.com pages plus coffee press (search summaries;
   pages couldn't be opened from here).

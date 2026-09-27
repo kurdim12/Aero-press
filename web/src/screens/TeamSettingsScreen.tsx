@@ -7,7 +7,7 @@ import type { TeamSettingsInput } from '../../../shared/schemas';
 import { aiUsageQuery } from '../ai';
 import { ApiError, api, errorMessage } from '../api';
 import { teamSettingsQuery } from '../board';
-import { FormError, NumberField, SelectField, TextAreaField, TextField, useRevealFirstError } from '../components/Fields';
+import { FormError, NumberField, SelectField, TextAreaField, TextField, ToggleField, useRevealFirstError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
 import { setFlash } from '../flash';
 import { parseNumber } from '../format';
@@ -15,7 +15,7 @@ import { strings } from '../strings';
 
 const t = strings.teamSettings;
 
-/** /settings/team (owner): team name, championship, competition coffee notes, AI budget. */
+/** /settings/team (owner): team name, championship, competition coffee notes, AI budget and models. */
 export function TeamSettingsScreen() {
   const settings = useQuery(teamSettingsQuery);
   return (
@@ -57,6 +57,7 @@ function TeamSettingsForm({ initial }: { initial: TeamSettings }) {
   const [budget, setBudget] = useState(String(initial.ai_monthly_budget_usd));
   const [coachModel, setCoachModel] = useState<OpenRouterModelId>(pickOf(initial.ai_coach_model, 'coach'));
   const [quickModel, setQuickModel] = useState<OpenRouterModelId>(pickOf(initial.ai_quick_model, 'quick'));
+  const [autoTips, setAutoTips] = useState(initial.ai_auto_tips);
   const [errors, setErrors] = useState<Errors>({});
   useRevealFirstError(errors);
 
@@ -91,6 +92,7 @@ function TeamSettingsForm({ initial }: { initial: TeamSettings }) {
       ai_monthly_budget_usd: amount,
       ai_coach_model: coachModel,
       ai_quick_model: quickModel,
+      ai_auto_tips: autoTips,
     });
   };
 
@@ -132,6 +134,7 @@ function TeamSettingsForm({ initial }: { initial: TeamSettings }) {
           error={errors.ai_quick_model}
         />
         <p className="field-hint">{t.modelsHint}</p>
+        <ToggleField label={t.autoTips} hint={t.autoTipsHint} checked={autoTips} onChange={setAutoTips} />
       </div>
       {save.isError && !(save.error instanceof ApiError && save.error.field) && <FormError>{errorMessage(save.error)}</FormError>}
       <button type="submit" className="btn block" disabled={save.isPending}>

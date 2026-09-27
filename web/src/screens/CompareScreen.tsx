@@ -1,9 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useSearch } from 'wouter';
-import type { RecipeRow } from '../../../shared/types';
-import { errorMessage } from '../api';
+import type { CompareRead, RecipeRow } from '../../../shared/types';
+import { aiUsageQuery } from '../ai';
+import { api, errorMessage } from '../api';
 import { FormError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
+import { useOnline } from '../offline/useOnline';
 import { recipesQuery } from '../queries';
 import { RECIPE_DISPLAY_FIELDS } from '../recipeFields';
 import { strings } from '../strings';
@@ -140,11 +143,76 @@ function Table({ a, b }: { a: RecipeRow; b: RecipeRow }) {
           ))}
         </tbody>
       </table>
+      {differing > 0 && <CompareCoach a={a} b={b} />}
       <div className="section">
         <Link href={`/recipes/${a.id}/compare`} className="btn secondary block">
           {c.pickAnother}
         </Link>
       </div>
+    </section>
+  );
+}
+
+/** On a tap, the coach says what the differences likely do in the cup and what to taste for. */
+function CompareCoach({ a, b }: { a: RecipeRow; b: RecipeRow }) {
+  const qc = useQueryClient();
+  const online = useOnline();
+  const usage = useQuery(aiUsageQuery);
+  const queryKey = ['compare-read', a.id, b.id];
+  const [asked, setAsked] = useState(() => qc.getQueryData(queryKey) !== undefined);
+  const read = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const res = await api<CompareRead>('POST', '/api/coach/compare', { a: a.id, b: b.id });
+      void qc.invalidateQueries({ queryKey: ['ai-usage'] });
+      return res;
+    },
+    enabled: asked && online,
+    retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+
+  if (usage.data?.configured === false) return null;
+  return (
+    <section className="section coach-tips">
+      <span className="eyebrow">{c.coach}</span>
+      {read.data ? (
+        <>
+          <div className="coach-card">
+            <p className="coach-read">{read.data.read}</p>
+          </div>
+          {read.data.effects.length > 0 && (
+            <ol className="tip-list">
+              {read.data.effects.map((e, i) => (
+                <li key={i}>
+                  <strong>{e.change}</strong>
+                  <span>{e.effect}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <h3 className="subhead">{c.inADuel}</h3>
+          <p>{read.data.duel}</p>
+        </>
+      ) : read.isFetching ? (
+        <p className="muted tips-loading" role="status">
+          {c.coachLoading}
+        </p>
+      ) : (
+        <div className="btn-stack">
+          {read.isError && <FormError>{errorMessage(read.error)}</FormError>}
+          <button
+            type="button"
+            className="btn secondary block"
+            disabled={!online}
+            onClick={() => (asked ? void read.refetch() : setAsked(true))}
+          >
+            {read.isError ? strings.common.retry : c.coachButton}
+          </button>
+          <p className="field-hint">{online ? c.coachHint : strings.tips.offline}</p>
+        </div>
+      )}
     </section>
   );
 }

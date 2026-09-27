@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'wouter';
-import type { BeanRow, ExperimentsResponse, ReadinessReport, RecipeRow, TodayResponse } from '../../../shared/types';
+import { Link, useLocation, useSearch } from 'wouter';
+import type { BeanRow, ExperimentsResponse, ReadinessReport, RecipeRow, TipsSubject, TodayResponse } from '../../../shared/types';
 import { modelLabel } from '../../../shared/aiModels';
 import { aiUsageQuery, readinessQuery, streamAnswer, todayQuery } from '../ai';
 import { api, errorMessage } from '../api';
@@ -16,7 +16,35 @@ import { strings } from '../strings';
 
 const c = strings.coach;
 
-/** /coach: today's duels, plan, adapt, readiness and ask anything. Every call counts toward the AI budget. */
+/** The bean or recipe a question is about (/coach?about=recipe:<id>, from "Ask the coach" on its page). */
+interface About {
+  kind: TipsSubject;
+  id: string;
+  label: string;
+  question: string;
+}
+
+function useAbout(recipes: RecipeRow[], beans: BeanRow[]): About | null {
+  const param = new URLSearchParams(useSearch()).get('about') ?? '';
+  const split = param.indexOf(':');
+  const kind = param.slice(0, split);
+  const id = param.slice(split + 1);
+  if (split < 0 || !id) return null;
+  if (kind === 'recipe') {
+    const r = recipes.find((x) => x.id === id);
+    return r ? { kind, id, label: c.aboutRecipe(r.display_code, r.name), question: c.aboutQuestionRecipe(r.display_code) } : null;
+  }
+  if (kind === 'bean') {
+    const b = beans.find((x) => x.id === id);
+    return b ? { kind, id, label: c.aboutBean(b.name), question: c.aboutQuestionBean(b.name) } : null;
+  }
+  return null;
+}
+
+/**
+ * /coach: today's duels, plan, adapt, readiness and ask anything. Every call counts toward the AI
+ * budget. With ?about=, the question box comes first, about that bean or recipe.
+ */
 export function CoachScreen() {
   const online = useOnline();
   const usage = useQuery(aiUsageQuery);
@@ -24,6 +52,7 @@ export function CoachScreen() {
   const beans = useQuery(beansQuery).data?.beans ?? [];
   const configured = usage.data?.configured ?? true;
   const enabled = online && configured;
+  const about = useAbout(recipes, beans);
 
   return (
     <>
@@ -38,11 +67,12 @@ export function CoachScreen() {
               : c.spend(c.money(usage.data.month_spend_usd), c.money(usage.data.cap_usd))}
           </p>
         )}
+        {about && <AskSection key={`${about.kind}:${about.id}`} enabled={enabled} about={about} />}
         <TodayCard enabled={enabled} />
         <PlanSection enabled={enabled} recipes={recipes} beans={beans} />
         <AdaptSection enabled={enabled} recipes={recipes} beans={beans} />
         <ReadinessSection enabled={enabled} />
-        <AskSection enabled={enabled} />
+        {!about && <AskSection enabled={enabled} />}
       </main>
     </>
   );
@@ -255,8 +285,9 @@ function ReadinessSection({ enabled }: { enabled: boolean }) {
   );
 }
 
-function AskSection({ enabled }: { enabled: boolean }) {
-  const [question, setQuestion] = useState('');
+function AskSection({ enabled, about }: { enabled: boolean; about?: About }) {
+  const [, navigate] = useLocation();
+  const [question, setQuestion] = useState(about?.question ?? '');
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -270,7 +301,7 @@ function AskSection({ enabled }: { enabled: boolean }) {
     setError(null);
     setAnswer('');
     try {
-      await streamAnswer(question.trim(), setAnswer);
+      await streamAnswer(question.trim(), setAnswer, about ? { kind: about.kind, id: about.id } : undefined);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -281,6 +312,14 @@ function AskSection({ enabled }: { enabled: boolean }) {
   return (
     <section className="section form">
       <span className="eyebrow">{c.ask}</span>
+      {about && (
+        <div className="about-chip">
+          <span>{about.label}</span>
+          <button type="button" onClick={() => navigate('/coach', { replace: true })}>
+            {c.aboutClear}
+          </button>
+        </div>
+      )}
       <TextAreaField label={c.question} placeholder={c.askPlaceholder} value={question} onChange={setQuestion} maxLength={1000} />
       <button type="button" className="btn block" disabled={!enabled || busy} onClick={() => void ask()}>
         {busy && !answer ? c.thinkingShort : c.askButton}

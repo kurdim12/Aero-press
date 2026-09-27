@@ -68,6 +68,74 @@ Return ONLY valid JSON, no text before or after:
 
 export const ASK_INSTRUCTIONS = `Answer the question below from the data. Plain text for a phone screen: short paragraphs or a short list, no headings, no tables. If the data can't answer it, say what to log or duel to find out.`;
 
+// ---------- Tips on one coffee or one recipe, and what two recipes' differences do ----------
+
+const indent = (text: string, by: string) => text.replace(/\n/g, `\n${by}`);
+
+const PLAN_NOTES = `"planned_total_s" is the whole routine as the app times it: the steps up to the press, a 10 s flip for inverted, the press, 15 s for any bypass and 15 s to pour. It must stay under 300 s. It is null when the recipe has no press start or press time yet.`;
+
+/** Short notes on the team: their competition and best recipes, for tips on one coffee or recipe. */
+export const teamBlock = (team: unknown) => `${DATA_NOTES}\n\n<team>\n${JSON.stringify(team)}\n</team>`;
+
+export function beanTipsPrompt(coffee: unknown): string {
+  return `The team just added the coffee below. Before anyone brews it, tell them how it is likely to behave on the AeroPress and how to approach it, from its details (origin, variety, process, roast level, days off roast, altitude, density) and from how the team's recipes have done so far.
+
+<coffee>
+${JSON.stringify(coffee)}
+</coffee>
+
+Return ONLY valid JSON, no text before or after:
+{
+  "summary": "2 or 3 sentences: how this coffee will likely taste and extract, and what that means for the recipe",
+  "tips": ["2 to 4 concrete brewing tips, each with numbers"],
+  "start": ${indent(EXPERIMENT_SHAPE, '  ')}
+}
+"start" is a starting recipe for this coffee. Its "parent" is the team recipe to begin from (usually their best one), and "changes" moves at most two settings for this coffee. If the team has no recipes yet, set "parent" to null and put a complete starting recipe in "changes": method, dose_g, water_g, temp_c, grind_setting, bloom_ends_s, press_starts_s and press_duration_s. Never put bean_id in "changes"; the app sets it. If the details are too thin to say much (only a name), say so in the summary and keep the tips general. ${CHANGE_RULES}`;
+}
+
+export function recipeTipsPrompt(code: string, recipe: unknown): string {
+  return `Review recipe ${code} below (with its bean, its parent and its last brews) before the team duels it: how it will likely taste, what would make it better, and one test to run next. Compare it with the team's best recipes where that helps.
+
+<recipe>
+${JSON.stringify(recipe)}
+</recipe>
+
+${PLAN_NOTES}
+
+Return ONLY valid JSON, no text before or after:
+{
+  "verdict": "2 or 3 sentences: how this recipe will likely taste and how it stands against the team's best",
+  "tips": [ { "title": "short name", "detail": "one or two sentences: what to change, by how much, and why" } ],
+  "checks": ["one sentence each: something to fix or confirm before duelling it"],
+  "next_test": ${indent(EXPERIMENT_SHAPE, '  ')}
+}
+2 to 4 tips, most useful first. At most 3 checks, only for real problems (over 5:00, an unusual ratio, a missing step or setting), or an empty list. "next_test" is one experiment with "parent": "${code}", or null if nothing is worth testing yet. ${CHANGE_RULES}`;
+}
+
+export function comparePrompt(pair: unknown): string {
+  return `Two of the team's recipes are below, with every setting that differs between them. What are those differences likely to do in the cup, and what should the judges taste for if the two meet in a blind duel? Use their records and brew averages where they exist.
+
+<recipes>
+${JSON.stringify(pair)}
+</recipes>
+
+${PLAN_NOTES}
+
+Return ONLY valid JSON, no text before or after:
+{
+  "read": "2 to 4 sentences: the cup each recipe will likely make, which is likelier to win blind, and how sure the data lets you be",
+  "effects": [ { "change": "the difference, with both values", "effect": "what it likely does to the cup" } ],
+  "duel": "one or two sentences: what to taste for when they meet"
+}
+One entry in "effects" per difference that matters, at most 6, biggest effect first. Write "change" in plain words for a barista (e.g. "Grind 20 vs 22 clicks"), not the setting's key. Use the recipe codes exactly as they appear.`;
+}
+
+/** "Ask the coach about this": the bean or recipe the question is about. */
+export function aboutBlock(kind: 'bean' | 'recipe', about: unknown): string {
+  const tag = kind === 'bean' ? 'coffee' : 'recipe';
+  return `The question is about this ${tag}:\n<${tag}>\n${JSON.stringify(about)}\n</${tag}>`;
+}
+
 // ---------- Haiku: quick log and after-brew read ----------
 
 export const QUICK_LOG_SYSTEM = `You turn an AeroPress barista's quick note about one brew into brew-log fields.

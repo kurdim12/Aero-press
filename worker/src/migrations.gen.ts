@@ -72,5 +72,13 @@ export const MIGRATIONS: Migration[] = [
       "ALTER TABLE teams ADD COLUMN ai_coach_model TEXT",
       "ALTER TABLE teams ADD COLUMN ai_quick_model TEXT"
     ]
+  },
+  {
+    "name": "0005_ai_tips.sql",
+    "queries": [
+      "CREATE TABLE ai_tips (\n  id TEXT PRIMARY KEY,                          \n  team_id TEXT NOT NULL REFERENCES teams (id),\n  subject TEXT NOT NULL CHECK (subject IN ('bean', 'recipe')),\n  subject_id TEXT NOT NULL,\n  tips_json TEXT,                               \n  tips_at INTEGER,\n  member_id TEXT,                               \n  claim TEXT,                                   \n  created_at INTEGER NOT NULL\n)",
+      "CREATE INDEX idx_ai_tips_team ON ai_tips (team_id, id)",
+      "ALTER TABLE teams ADD COLUMN ai_auto_tips INTEGER NOT NULL DEFAULT 1"
+    ]
   }
 ];

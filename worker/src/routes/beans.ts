@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
-import type { BeanRow, BeansResponse } from '../../../shared/types';
-import { beanInput } from '../../../shared/schemas';
+import type { BeanRow, BeanTipsResponse, BeansResponse } from '../../../shared/types';
+import { beanInput, tipsInput } from '../../../shared/schemas';
 import { requireMember } from '../middleware/auth';
+import { aiScope } from '../ai/client';
+import { getTips, writeTips } from '../ai/tips';
 import { ApiError, notFound } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { idParam, readJson } from '../lib/validate';
@@ -126,4 +128,13 @@ beanRoutes.put('/:id', async (c) => {
       ),
   ]);
   return c.json<BeanRow>(await getBean(db, me.team_id, current.id));
+});
+
+/** The coach's tips on this coffee (null until someone asks, or while they're being written). */
+beanRoutes.get('/:id/tips', async (c) => c.json<BeanTipsResponse>(await getTips(aiScope(c), 'bean', idParam(c, 'bean'))));
+
+beanRoutes.post('/:id/tips', async (c) => {
+  const { refresh } = await readJson(c, tipsInput);
+  const res = await writeTips(aiScope(c), 'bean', idParam(c, 'bean'), refresh === true, (work) => c.executionCtx.waitUntil(work));
+  return c.json<BeanTipsResponse>(res, res.pending ? 202 : 200);
 });

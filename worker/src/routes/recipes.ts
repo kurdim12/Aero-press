@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
-import type { RecipeDetailResponse, RecipeRow, RecipesResponse } from '../../../shared/types';
-import { recipeInput, recipeListQuery, recipeLockInput, recipeUpdate } from '../../../shared/schemas';
+import type { RecipeDetailResponse, RecipeRow, RecipeTipsResponse, RecipesResponse } from '../../../shared/types';
+import { recipeInput, recipeListQuery, recipeLockInput, recipeUpdate, tipsInput } from '../../../shared/schemas';
 import { requireMember, requireOwner } from '../middleware/auth';
+import { aiScope } from '../ai/client';
+import { getTips, writeTips } from '../ai/tips';
 import { ApiError, notFound } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { isUniqueViolation } from '../lib/members';
@@ -137,4 +139,13 @@ recipeRoutes.put('/:id/lock', requireOwner, async (c) => {
       : [db.prepare('UPDATE recipes SET locked = 0 WHERE id = ? AND team_id = ?').bind(current.id, me.team_id)],
   );
   return c.json<RecipeRow>(await getRecipeRow(db, me.team_id, current.id));
+});
+
+/** The coach's review of this recipe (null until someone asks, or while it's being written). */
+recipeRoutes.get('/:id/tips', async (c) => c.json<RecipeTipsResponse>(await getTips(aiScope(c), 'recipe', idParam(c, 'recipe'))));
+
+recipeRoutes.post('/:id/tips', async (c) => {
+  const { refresh } = await readJson(c, tipsInput);
+  const res = await writeTips(aiScope(c), 'recipe', idParam(c, 'recipe'), refresh === true, (work) => c.executionCtx.waitUntil(work));
+  return c.json<RecipeTipsResponse>(res, res.pending ? 202 : 200);
 });

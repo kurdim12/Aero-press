@@ -44,7 +44,7 @@ or an Anthropic key (Claude). If both are set, OpenRouter is used.
    Add**. Choose type **Secret**, name it `OPENROUTER_API_KEY`, paste the key, and deploy.
    (For Claude directly instead, use the name `ANTHROPIC_API_KEY` with a key from
    [console.anthropic.com](https://console.anthropic.com).)
-3. Pick the models in **Settings › Team and championship › AI models**:
+3. Pick the models in **Settings › Team and championship › AI coach**:
    - **Coach model:** plans, reads and questions.
    - **Quick model:** quick log and brew notes.
    - Each option shows its price per million tokens. The default is Gemini 3.8 Flash.
@@ -53,6 +53,24 @@ or an Anthropic key (Claude). If both are set, OpenRouter is used.
 
 The key stays in Cloudflare and never reaches anyone's phone. Until it's added, the rest of the
 app works and the Coach tab says the coach isn't set up.
+
+**Where the coach helps.** Once the key is in, the coach works across the app, not only in the
+Coach tab:
+- **A new coffee:** its page opens with what to expect in the cup, brewing tips, and a starting
+  recipe built from your best one (**Create as new recipe**).
+- **A new recipe, clone or champion recipe:** a review with tips, things to check before duelling
+  it, and one next test.
+- **Update tips** writes new ones, for example after an edit. **Ask the coach** opens the Coach
+  tab with a question about that coffee or recipe.
+- **Recipes › Compare:** **What do these differences do?** explains the settings that differ.
+- **After each brew and each duel:** a short read of the result. **Brew › Quick log** fills in the
+  brew form from a sentence.
+- **Coach tab:** today's duels, a session plan, adapting a recipe to a new coffee, a readiness
+  report, and any question.
+
+Each of these is one AI call from the monthly budget. New coffees and recipes are reviewed
+automatically the first time someone opens them. To review only on request, switch off
+**Automatic coach tips** in **Settings › Team and championship › AI coach**.
 
 **Back up your data.** Go to **Settings › Download backup**. The phone saves one JSON file with
 the beans, recipes, brews, duels, votes, readiness reports and AI usage. It leaves out PINs and
