@@ -50,8 +50,18 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   v1 import file in the browser and send it in chunks; build exports per table rather than one
   giant JSON.stringify; waiting on D1 or fetch doesn't count as CPU. Mind the daily quotas
   (requests, D1 rows read/written) when designing Elo-on-read and 2-second duel polling.
-- This cloud environment's egress blocks api.cloudflare.com; deploying from here needs the network
-  policy changed and a `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` in the environment (new session).
+- Deploys: the user connected the GitHub repo to Cloudflare Workers Builds (Worker `aero-press`).
+  The production branch is this repo's only branch, so every push deploys to the live app:
+  push only working, tested states.
+  - The Worker `name` in wrangler.jsonc must stay `aero-press`.
+  - The D1 binding has no `database_id`. `wrangler deploy` inherits the Worker's bound database,
+    else uses the account's `aeropress-lab`, else creates it (wrangler 4.140 provisioning, on by
+    default).
+  - The dashboard deploy command must be `npm run deploy`: build, `wrangler deploy`, then
+    `d1 migrations apply --remote`. Migrations run seconds after the new code is live, so keep
+    them additive.
+  - This cloud environment's egress blocks api.cloudflare.com, so nothing deploys from here
+    directly.
 
 - Beans are shared; anyone edits them. One competition coffee per team, set by the owner only.
 - Recipes: any member creates (code = their next R-number, shown as initials-code, e.g. AK-R3) or

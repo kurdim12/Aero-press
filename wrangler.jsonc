@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "aeropress-lab",
+  // Must match the Worker name in the Cloudflare dashboard (Workers Builds deploys to it).
+  "name": "aero-press",
   "main": "worker/src/index.ts",
   "compatibility_date": "2026-08-20",
   "observability": { "enabled": true },
@@ -18,9 +19,9 @@
     {
       "binding": "DB",
       "database_name": "aeropress-lab",
-      // Placeholder for local development. Phase 7 replaces it with the
-      // production database id from `wrangler d1 create aeropress-lab`.
-      "database_id": "00000000-0000-4000-8000-000000000000",
+      // No database_id on purpose: `wrangler deploy` uses the database already bound to the
+      // Worker, else the account's database with this name, else creates it. Local dev keeps
+      // its own database in .wrangler/.
       "migrations_dir": "migrations"
     }
   ]

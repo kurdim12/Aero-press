@@ -48,6 +48,24 @@ Sign in as the owner, then **Settings › Import v1 backup** and pick the JSON f
 exported. You'll see what's in it before anything is saved, and importing twice is safe.
 To try the flow without your own file, use `test/fixtures/v1-backup.json` (made-up sample data).
 
+## Deploy
+
+The app deploys from GitHub through Cloudflare Workers Builds, to the Worker `aero-press`. In the
+Cloudflare dashboard, go to **Workers & Pages › aero-press › Settings › Build** and use:
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy` (builds, deploys, then applies database migrations) |
+
+Every push to the production branch deploys. The first deploy creates the `aeropress-lab` D1
+database in your Cloudflare account, or reuses one that already has that name.
+
+Right after the first deploy, open the site and complete the team setup. Until someone does, the
+setup screen is open to anyone who has the link.
+
+To deploy from your own computer instead, run `npx wrangler login` and then `npm run deploy`.
+
 ### Start over with an empty database
 
 ```bash
@@ -64,6 +82,7 @@ npm run db:reset
 | `npm test` | Unit tests plus API tests inside the Workers runtime with a real D1 |
 | `npm run typecheck` | Strict TypeScript for the Worker, the web app and tooling |
 | `npm run db:reset` | Delete the local database and re-apply migrations |
+| `npm run deploy` | Build, deploy to Cloudflare, then apply migrations to the live database |
 
 ## Layout
 
