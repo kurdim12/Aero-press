@@ -11,6 +11,7 @@ import { BoardScreen } from './screens/BoardScreen';
 import { BrewLogScreen } from './screens/BrewLogScreen';
 import { BrewScreen } from './screens/BrewScreen';
 import { BrewTimerScreen } from './screens/BrewTimerScreen';
+import { ChampionScreen, ChampionsScreen } from './screens/ChampionsScreen';
 import { CoachScreen } from './screens/CoachScreen';
 import { CompareScreen } from './screens/CompareScreen';
 import { DuelNewScreen } from './screens/DuelNewScreen';
@@ -69,6 +70,8 @@ function Shell({ me }: { me: MeResponse }) {
           </Route>
           <Route path="/beans/:id">{(p) => <BeanFormScreen id={p.id} />}</Route>
           <Route path="/recipes" component={RecipesScreen} />
+          <Route path="/recipes/champions" component={ChampionsScreen} />
+          <Route path="/recipes/champions/:id">{(p) => <ChampionScreen id={p.id} />}</Route>
           <Route path="/recipes/new">
             <RecipeFormScreen />
           </Route>

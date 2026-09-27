@@ -162,6 +162,15 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   - Prices: Sonnet 5 at $2 / $10 per million tokens (the introductory price is now permanent),
     Haiku 4.5 at $1 / $5.
 
+- Champion recipes (`shared/champions.ts`, screens under `/recipes/champions`): WAC podium recipes
+  researched from the official WAC and aeropress.com pages plus coffee press (search summaries;
+  pages couldn't be opened from here).
+  - Values the sources disagree on stay empty, and `caveats` says why. Millilitres are entered as
+    grams. Text is shortened to the form's limits, and the full method is in `other_steps`.
+  - "Add to our recipes" opens the new-recipe form through a draft (name `WAC <year> <place> ·
+    <name>`, and the notes carry the sources).
+  - A unit test validates every entry against `recipeInput`.
+
 ## Phase status
 1. Skeleton and auth: built (checkpoint 1, approved).
 2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2, approved).

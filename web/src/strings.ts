@@ -492,6 +492,30 @@ export const strings = {
     },
   },
 
+  champions: {
+    title: 'Champion recipes',
+    open: 'World champion recipes',
+    intro:
+      'Podium recipes from the World AeroPress Championship, as the champions published them. Add one to the team’s recipes to brew it on the timer and duel it against your own.',
+    trust: 'Collected from the official championship pages and coffee press. Where sources disagree, the value is left empty and the recipe says why. Check the sources before relying on a number.',
+    noFinal2020: 'No world final in 2020.',
+    place: { 1: '1st', 2: '2nd', 3: '3rd' } as Record<number, string>,
+    placeLong: (place: number, country: string) => `${['', '1st', '2nd', '3rd'][place] ?? place} place · ${country}`,
+    yearTitle: (year: number) => `WAC ${year}`,
+    winner: 'World champion',
+    noRecipe: 'No recipe was published for this result.',
+    add: 'Add to our recipes',
+    addHint: 'Opens a new recipe with these settings. Pick your bean, check it, then save.',
+    steps: 'Steps as published',
+    notes: 'About',
+    caveats: 'What the sources leave open',
+    sources: 'Sources',
+    recipeName: (year: number, place: number, name: string) => `WAC ${year} ${['', '1st', '2nd', '3rd'][place] ?? place} · ${name}`,
+    draftNote: (year: number, place: number, name: string, country: string, sources: string[]) =>
+      `World AeroPress Championship ${year}, ${['', '1st', '2nd', '3rd'][place] ?? place} place: ${name} (${country}). As published; check before relying on a number.\nSources: ${sources.join(' ')}`,
+    count: (n: number, from: number, to: number) => `${n} podium recipes, ${from}–${to}`,
+  },
+
   brew: {
     title: 'Brew',
     pick: 'Pick a recipe to brew.',

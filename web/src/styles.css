@@ -1940,3 +1940,55 @@ dl.kv-list.section {
     animation: none;
   }
 }
+
+/* ---------- Champion recipes ---------- */
+
+.place {
+  width: 40px;
+  flex-shrink: 0;
+  font-size: 18px;
+  color: var(--ink-3);
+}
+
+.place.gold {
+  color: var(--gold);
+}
+
+.prose {
+  margin: 0;
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.source-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-list a {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.row.feature {
+  border-bottom: 0;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--gold-soft);
+}
+
+.row.feature .chevron {
+  margin-left: auto;
+  color: var(--gold);
+  font-size: 22px;
+  line-height: 1;
+}
