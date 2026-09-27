@@ -1666,3 +1666,146 @@ dl.kv-list.section {
 .score.unset .slider::-moz-range-thumb {
   background: color-mix(in srgb, var(--ink) 26%, var(--bg));
 }
+
+/* ---------- Phase 4: duels ---------- */
+
+.subhead {
+  margin: 18px 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.avatar.small {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.row.row-call {
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding-inline: 10px;
+  margin-inline: -10px;
+}
+
+.duel-head {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  justify-items: start;
+}
+
+.judge-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.judge-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.judge-chips li.voted {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.duel-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  justify-items: stretch;
+}
+
+.duel-card > .tag {
+  justify-self: start;
+}
+
+.helper-card {
+  border: 2px solid var(--gold);
+}
+
+.cup-assign {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cup {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.cup.winner {
+  border: 2px solid var(--gold);
+  background: var(--gold-soft);
+}
+
+.cup-letter {
+  font-size: 56px;
+  line-height: 1;
+}
+
+.cup-recipe {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.duel-count {
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.vote {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  text-align: center;
+}
+
+.vote-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.btn.vote-btn {
+  min-height: 0;
+  aspect-ratio: 1 / 1.05;
+  font-size: clamp(72px, 30vw, 150px);
+  line-height: 1;
+  border-radius: 20px;
+}
+
+.result-title {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.result-title.gold {
+  color: var(--gold);
+}

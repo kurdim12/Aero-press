@@ -1,5 +1,5 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query';
-import type { BeanRow, BeansResponse, RecipeDetailResponse, RecipesResponse } from '../../shared/types';
+import type { BeanRow, BeansResponse, DuelView, DuelsResponse, RecipeDetailResponse, RecipesResponse } from '../../shared/types';
 import { api } from './api';
 
 export type RecipeScope = 'all' | 'mine';
@@ -32,6 +32,19 @@ export const recipeQuery = (id: string) =>
     queryKey: ['recipe', id],
     queryFn: () => api<RecipeDetailResponse>('GET', `/api/recipes/${encodeURIComponent(id)}`),
   });
+
+export const duelsQuery = queryOptions({
+  queryKey: ['duels'],
+  queryFn: () => api<DuelsResponse>('GET', '/api/duels'),
+});
+
+export const duelQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['duel', id],
+    queryFn: () => api<DuelView>('GET', `/api/duels/${encodeURIComponent(id)}`),
+  });
+
+export const isDuelFinished = (d: Pick<DuelView, 'status'>) => d.status === 'revealed' || d.status === 'cancelled';
 
 /** After any change to beans or recipes, refetch the lists and details that show them. */
 export function invalidateLibrary(qc: QueryClient): Promise<void> {

@@ -5,8 +5,9 @@ rank recipes with blind head-to-head duels (Elo), monitor progress, and get AI c
 
 One Cloudflare Worker serves both the API (Hono + D1) and the web app (Vite + React PWA).
 
-> Build status: **Phase 3 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
-> compare, lineage and locking; v1 import; brew timer, brew log with extraction yield, offline brewing).
+> Build status: **Phase 4 of 7** (team and sign-in; beans; recipes with Elo, clone-and-tweak,
+> compare, lineage and locking; v1 import; brew timer, brew log with extraction yield, offline brewing;
+> blind multi-phone duels with a leaderboard).
 > The owner's one-page guide (add a member, reset a PIN, AI budget, backups) arrives with the deploy in phase 7.
 
 ## Run it on your computer

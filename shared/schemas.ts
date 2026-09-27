@@ -2,7 +2,7 @@
 // only imports their inferred types.
 import { z } from 'zod';
 import { BREW_LIMITS } from './limits';
-import { IMPORT_CHUNK_MAX, METHODS } from './types';
+import { DUEL_CHOICES, IMPORT_CHUNK_MAX, METHODS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
 
@@ -300,3 +300,27 @@ export const brewInput = z.object({
   brewed_at: z.number().int().positive().optional(),
 });
 export type BrewInput = z.input<typeof brewInput>;
+
+// ---------- Duels ----------
+
+/** Blind judging needs someone to pour, so 1 to 3 judges who aren't the creator. */
+export const DUEL_MAX_JUDGES = 3;
+
+export const duelInput = z
+  .object({
+    recipe_a_id: id,
+    recipe_b_id: id,
+    bean_id: id.nullable().optional(),
+    judge_ids: z
+      .array(id, { error: 'Pick the judges.' })
+      .min(1, 'Pick at least one judge.')
+      .max(DUEL_MAX_JUDGES, `Pick up to ${DUEL_MAX_JUDGES} judges.`),
+    notes: text(500),
+  })
+  .refine((v) => v.recipe_a_id !== v.recipe_b_id, { message: 'Pick two different recipes.', path: ['recipe_b_id'] });
+export type DuelInput = z.input<typeof duelInput>;
+
+export const duelVoteInput = z.object({
+  choice: z.enum(DUEL_CHOICES, { error: 'Vote X, Y or can’t separate.' }),
+});
+export type DuelVoteInput = z.input<typeof duelVoteInput>;

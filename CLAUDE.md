@@ -125,8 +125,24 @@ file), PWA. Router: wouter. Data fetching: TanStack Query. Charts (phase 6): Rec
   after sign-in.
 - Navigation: new screens open at the top; Back keeps the browser's scroll restore (`web/src/scroll.ts`).
 
+- Duels (worker/src/routes/duels.ts, lib/duels.ts):
+  - A duel is created already `pouring`; the server's coin flip decides which recipe is X.
+  - The creator pours, so they can't be a judge. There are 1 to 3 judges, all active members.
+  - `ready` moves it to `judging`. Each judge gets one vote, and it can't be changed.
+  - The last vote reveals the duel in the same D1 batch, through a conditional UPDATE, so racing
+    votes reveal it once. The creator or owner can reveal early once at least one vote is in, or
+    cancel.
+  - Rematch swaps X and Y and keeps the judges, minus whoever starts it. It's idempotent via
+    `rematch_id`.
+  - `toDuelView` is the only place a duel becomes a response. Recipe identities and notes go to
+    the creator before the reveal, and to everyone after it. Judges' choices appear only after
+    the reveal. `worker/test/duels.test.ts` checks raw JSON for leaks.
+  - The duel screen polls every 2 s until it's revealed or cancelled. The Duel list polls every
+    4 s while open, which is how judges find a new duel or a rematch.
+  - The leaderboard (on the Duel tab) is computed in the browser from the recipes list.
+
 ## Phase status
 1. Skeleton and auth: built (checkpoint 1, approved).
 2. Beans, recipes, compare, lineage, v1 import: built (checkpoint 2, approved).
-3. Brew mode and log (timer, offline queue, manual log, EY): built (checkpoint 3).
-4. Duels, Elo, leaderboard: next.
+3. Brew mode and log (timer, offline queue, manual log, EY): built (checkpoint 3, approved).
+4. Duels, Elo, leaderboard: built. The user asked to finish all remaining phases without stopping.

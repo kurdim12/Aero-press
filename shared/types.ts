@@ -229,3 +229,73 @@ export interface ImportResult {
   skipped: number;
   warnings: ImportWarning[];
 }
+
+// ---------- Duels ----------
+
+export const DUEL_CHOICES = ['x', 'y', 'tie'] as const;
+export type DuelChoice = (typeof DUEL_CHOICES)[number];
+export type DuelStatus = 'setup' | 'pouring' | 'judging' | 'revealed' | 'cancelled';
+
+/** A recipe in a duel. Judges and onlookers only get these after the reveal. */
+export interface DuelRecipe {
+  id: string;
+  display_code: string;
+  name: string | null;
+}
+
+export interface DuelPerson {
+  id: string;
+  name: string;
+  initials: string;
+}
+
+export interface DuelJudge extends DuelPerson {
+  voted: boolean;
+  /** How they voted: only after the reveal. */
+  choice: DuelChoice | null;
+}
+
+export interface DuelResult {
+  x_votes: number;
+  y_votes: number;
+  ties: number;
+  /** null on a draw. */
+  winner: 'x' | 'y' | null;
+}
+
+/**
+ * One duel as the asking member may see it. Before the reveal only the creator, who pours,
+ * gets the recipes behind X and Y; judges and onlookers get null. The API enforces this.
+ */
+export interface DuelView {
+  id: string;
+  status: DuelStatus;
+  bean: { id: string; name: string } | null;
+  created_by: DuelPerson | null;
+  created_at: number;
+  revealed_at: number | null;
+  judges: DuelJudge[];
+  votes_in: number;
+  x: DuelRecipe | null;
+  y: DuelRecipe | null;
+  result: DuelResult | null;
+  rematch_of: string | null;
+  /** The rematch started from this duel, so every phone can follow it. */
+  rematch_id: string | null;
+  notes: string | null;
+  ai_read: string | null;
+  you: {
+    is_creator: boolean;
+    is_judge: boolean;
+    vote: DuelChoice | null;
+    /** Creator or owner: can call the cups ready, reveal early, cancel, rematch. */
+    can_manage: boolean;
+  };
+}
+
+export interface DuelsResponse {
+  /** Pouring or judging now. */
+  active: DuelView[];
+  /** Revealed or cancelled, newest first. */
+  recent: DuelView[];
+}
