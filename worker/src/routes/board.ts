@@ -246,7 +246,7 @@ boardRoutes.get('/', async (c) => {
       return { member_id: m.id, name: m.name, initials: initialsOf(m.name), brews, duels: duelsPerDay, last_active: last, days_since: daysSince };
     });
 
-  const readiness = await readinessFor(db, team, locked, compBean, duels);
+  const readiness = await readinessFor(db, team, locked, compBean);
 
   return c.json<BoardResponse>({
     view: { member_id: viewId, name: viewMember?.name ?? null },
@@ -274,9 +274,16 @@ async function readinessFor(
   team: string,
   locked: RecipeRow | null,
   compBean: { id: string } | null,
-  duels: { bean_id: string | null }[],
 ): Promise<ReadinessItem[]> {
-  const compDuels = compBean ? duels.filter((d) => d.bean_id === compBean.id).length : 0;
+  // Any revealed duel on the competition coffee counts, barista duels included.
+  const compDuels = compBean
+    ? ((
+        await db
+          .prepare(`SELECT COUNT(*) AS n FROM duels WHERE team_id = ? AND bean_id = ? AND status = 'revealed'`)
+          .bind(team, compBean.id)
+          .first<{ n: number }>()
+      )?.n ?? 0)
+    : 0;
   let beans = 0;
   let streak = 0;
   if (locked) {

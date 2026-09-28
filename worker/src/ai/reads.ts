@@ -1,7 +1,7 @@
 // The short reads the coach writes on its own: after a brew (Haiku) and after a duel (Sonnet).
 import { type Criterion, type DuelRead, JUDGING_CRITERIA } from '../../../shared/types';
 import { duelReadOutput } from '../../../shared/schemas';
-import type { DuelDbRow } from '../lib/duels';
+import { type DuelDbRow, winnerSide } from '../lib/duels';
 import { listRecipes, recipeBrewAverages } from '../lib/recipes';
 import { type AiScope, askJson, askText } from './client';
 import { recipeForCoach } from './context';
@@ -92,7 +92,7 @@ export async function writeDuelRead(scope: AiScope, duel: DuelDbRow, claim: stri
   const y = recipes.find((r) => r.id === duel.recipe_y_id);
   if (!x || !y) throw new Error('duel recipes missing');
   const baristas = duel.barista_x_name && duel.barista_y_name ? { x: duel.barista_x_name, y: duel.barista_y_name } : null;
-  const side = duel.x_votes > duel.y_votes ? 'x' : duel.y_votes > duel.x_votes ? 'y' : null;
+  const side = winnerSide(duel);
   const winner = side === null ? 'draw' : baristas ? `${baristas[side]} (${(side === 'x' ? x : y).display_code})` : (side === 'x' ? x : y).display_code;
   const judged = (cup: 'x' | 'y') => {
     const row = scores.results.find((r) => r.cup === cup);

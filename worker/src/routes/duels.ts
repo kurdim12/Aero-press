@@ -270,21 +270,29 @@ duelRoutes.post('/:id/vote', async (c) => {
   if (duel.status !== 'judging') throw duelOver();
 
   const now = Date.now();
+  // The vote and its scores land only while the duel is still being judged: an early reveal or a
+  // cancel can get in between the check above and this batch.
+  const stillJudging = `WHERE EXISTS (SELECT 1 FROM duels WHERE id = ? AND team_id = ? AND status = 'judging')`;
   const score = (cup: 'x' | 'y') =>
     db
       .prepare(
         `INSERT OR IGNORE INTO duel_scores (duel_id, judge_member_id, cup, ${JUDGING_CRITERIA.join(', ')})
-         VALUES (?, ?, ?, ${JUDGING_CRITERIA.map(() => '?').join(', ')})`,
+         SELECT ?, ?, ?, ${JUDGING_CRITERIA.map(() => '?').join(', ')} ${stillJudging}`,
       )
-      .bind(id, me.id, cup, ...JUDGING_CRITERIA.map((k) => scores[cup][k]));
-  await db.batch([
+      .bind(id, me.id, cup, ...JUDGING_CRITERIA.map((k) => scores[cup][k]), id, me.team_id);
+  const [voted] = await db.batch([
     db
-      .prepare('INSERT OR IGNORE INTO duel_votes (duel_id, judge_member_id, choice, created_at) VALUES (?, ?, ?, ?)')
-      .bind(id, me.id, choice, now),
+      .prepare(`INSERT OR IGNORE INTO duel_votes (duel_id, judge_member_id, choice, created_at) SELECT ?, ?, ?, ? ${stillJudging}`)
+      .bind(id, me.id, choice, now, id, me.team_id),
     score('x'),
     score('y'),
     revealStatement(db, me.team_id, id, now, true),
   ]);
+  if (voted?.meta.changes === 0) {
+    // Not stored: either this judge's vote was already in (a double tap), or the duel ended first.
+    const kept = await db.prepare('SELECT 1 FROM duel_votes WHERE duel_id = ? AND judge_member_id = ?').bind(id, me.id).first();
+    if (!kept) throw duelOver();
+  }
   return c.json<DuelView>(await viewOf(db, me, id));
 });
 

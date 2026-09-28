@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import { queryOptions, type QueryClient } from '@tanstack/react-query';
 import type { MeResponse, MembersResponse, SetupStatus, SignInList } from '../../shared/types';
 import { ApiError, api } from './api';
+import { forgetJudgeSheets } from './judgeSheet';
 import { forgetSnapshot } from './offline/snapshot';
 
 export const setupStatusQuery = queryOptions({
@@ -43,6 +44,7 @@ const PUBLIC_QUERIES = new Set(['setup-status', 'me', 'signin-list']);
  */
 export function clearSessionData(qc: QueryClient): void {
   forgetSnapshot();
+  forgetJudgeSheets();
   qc.setQueryData(meQuery.queryKey, null);
   qc.removeQueries({ predicate: (q) => !PUBLIC_QUERIES.has(String(q.queryKey[0])) });
 }

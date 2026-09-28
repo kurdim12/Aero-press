@@ -194,5 +194,7 @@ describe('blind duels', () => {
     const judgeView = (await judges[0]!.client.get<DuelView>(`/api/duels/${duel.id}`)).body;
     expect(judgeView.rematch_id).toBe(rematch.body.id);
     expect((await judges[0]!.client.get<DuelView>(`/api/duels/${rematch.body.id}`)).body.x).toBeNull();
+    // The judges saw the first reveal, and a rematch swaps the cups: they aren't told it's a rematch.
+    expect((await judges[0]!.client.get<DuelView>(`/api/duels/${rematch.body.id}`)).body.rematch_of).toBeNull();
   });
 });

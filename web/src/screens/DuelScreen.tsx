@@ -19,7 +19,7 @@ import { FormError } from '../components/Fields';
 import { ScoreSlider } from '../components/ScoreSlider';
 import { TopBar } from '../components/TopBar';
 import { formatNumber } from '../format';
-import { browserStore, readJson, writeJson } from '../offline/storage';
+import { type Sheet, readSheet, saveSheet } from '../judgeSheet';
 import { useOnline } from '../offline/useOnline';
 import { beansQuery, duelQuery, invalidateLibrary, isDuelFinished, recipesQuery } from '../queries';
 import { useMe } from '../session';
@@ -34,7 +34,6 @@ const READ_AUTO_MS = 24 * 3600_000;
 /** Another phone is writing the read: ask again this often. */
 const READ_POLL_MS = 3000;
 
-type Sheet = Record<'x' | 'y', Partial<CupScores>>;
 type FullSheet = Record<'x' | 'y', CupScores>;
 
 /** /duel/:id — one duel, live on every phone: polls every 2 s until the reveal or a cancel. */
@@ -255,9 +254,6 @@ function CompetitorPanel({ view }: { view: DuelView }) {
   );
 }
 
-const sheetKey = (duelId: string) => `ap-judge-sheet:${duelId}`;
-const store = browserStore();
-
 const sumOf = (cup: Partial<CupScores>) => JUDGING_CRITERIA.reduce((total, k) => total + (cup[k] ?? 0), 0);
 const isFull = (sheet: Sheet): sheet is FullSheet => JUDGING_CRITERIA.every((k) => sheet.x[k] != null && sheet.y[k] != null);
 
@@ -271,11 +267,12 @@ function JudgePanel({
   busy: boolean;
   onVote: (choice: DuelChoice, scores: FullSheet) => Promise<boolean>;
 }) {
-  const [sheet, setSheet] = useState<Sheet>(() => readJson<Sheet>(store, sheetKey(view.id)) ?? { x: {}, y: {} });
+  const memberId = useMe().member.id;
+  const [sheet, setSheet] = useState<Sheet>(() => readSheet(memberId, view.id) ?? { x: {}, y: {} });
   const set = (cup: 'x' | 'y', key: Criterion, value: number | null) =>
     setSheet((current) => {
       const next = { ...current, [cup]: { ...current[cup], [key]: value ?? undefined } };
-      writeJson(store, sheetKey(view.id), next);
+      saveSheet(memberId, view.id, next);
       return next;
     });
 
@@ -299,7 +296,7 @@ function JudgePanel({
   const [tx, ty] = [sumOf(sheet.x), sumOf(sheet.y)];
   const vote = async (choice: DuelChoice) => {
     if (!isFull(sheet)) return;
-    if (await onVote(choice, sheet)) writeJson(store, sheetKey(view.id), null);
+    if (await onVote(choice, sheet)) saveSheet(memberId, view.id, null);
   };
   return (
     <section className="vote">

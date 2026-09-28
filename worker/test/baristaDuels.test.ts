@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { BaristaStandingsResponse, DuelView, DuelsResponse, ExportPage, RecipeRow, RecipesResponse } from '../../shared/types';
+import type { BaristaStandingsResponse, BoardResponse, DuelView, DuelsResponse, ExportPage, RecipeRow, RecipesResponse } from '../../shared/types';
 import { type Client, TEAM_PIN, addBarista, freshDb, judgeScores, recipeBody, setupTeam, signIn, vote } from './helpers';
 
 beforeEach(freshDb);
@@ -133,6 +133,17 @@ describe('barista duels', () => {
     expect(hosted.status).toBe(201);
     expect(hosted.body.x_barista).not.toBeNull();
     expect(hosted.body.you).toMatchObject({ is_creator: true, is_barista: true });
+  });
+
+  it('counts on the Board as a duel on the competition coffee', async () => {
+    const t = await team();
+    const comp = (await t.owner.post<{ id: string }>('/api/beans', { name: 'Ethiopia Guji', is_competition_coffee: true })).body;
+    const duel = (await t.owner.post<DuelView>('/api/duels', baristaDuel(t, { bean_id: comp.id }))).body;
+    await t.owner.post(`/api/duels/${duel.id}/ready`);
+    await t.sara.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
+    await t.yousef.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
+    const board = (await t.owner.get<BoardResponse>('/api/board')).body;
+    expect(board.readiness.find((r) => r.key === 'comp_duel')).toMatchObject({ done: true, value: 1 });
   });
 
   it('draws and same-recipe duels never break the rankings', async () => {

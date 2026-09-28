@@ -111,6 +111,18 @@ export function parseDuelRead(stored: string | null): DuelRead | null {
   }
 }
 
+/**
+ * The winning cup of a revealed duel (null: a draw). A barista duel goes by its votes, since both
+ * cups can be one recipe; a recipe duel by its winning recipe, which an imported duel keeps even
+ * when the old app saved no vote counts.
+ */
+export function winnerSide(
+  d: Pick<DuelDbRow, 'barista_x_id' | 'recipe_x_id' | 'recipe_y_id' | 'winner_recipe_id' | 'x_votes' | 'y_votes'>,
+): 'x' | 'y' | null {
+  if (d.barista_x_id) return d.x_votes > d.y_votes ? 'x' : d.y_votes > d.x_votes ? 'y' : null;
+  return d.winner_recipe_id === d.recipe_x_id ? 'x' : d.winner_recipe_id === d.recipe_y_id ? 'y' : null;
+}
+
 /** Who may see which recipe (and in a barista duel, which barista) is X and which is Y. */
 export function canSeeRecipes(duel: Pick<DuelDbRow, 'status' | 'created_by'>, viewerId: string): boolean {
   return duel.status === 'revealed' || duel.created_by === viewerId;
@@ -264,12 +276,13 @@ export function toDuelView(
           x_votes: d.x_votes,
           y_votes: d.y_votes,
           ties: Math.max(0, votesIn - d.x_votes - d.y_votes),
-          // From the votes, not the winning recipe: in a barista duel both cups can be one recipe.
-          winner: d.x_votes > d.y_votes ? 'x' : d.y_votes > d.x_votes ? 'y' : null,
+          winner: winnerSide(d),
           scores: averageScores(scoreRows),
         }
       : null,
-    rematch_of: d.rematch_of,
+    // A rematch swaps the cups, so judges who saw the first reveal could tell them apart:
+    // before this reveal, only the creator learns it is a rematch.
+    rematch_of: showRecipes ? d.rematch_of : null,
     rematch_id: d.rematch_id,
     // Notes can name the recipes ("R3 vs R5, hotter"), so they follow the same rule.
     notes: showRecipes ? d.notes : null,

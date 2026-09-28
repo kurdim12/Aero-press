@@ -5,6 +5,7 @@ import { brewRatio, daysOffRoast } from '../../../shared/formulas';
 import { planBrew } from '../../../shared/phases';
 import type { AuthMember } from '../env';
 import { notFound } from '../lib/errors';
+import { winnerSide } from '../lib/duels';
 import { listRecipes, recipeBrewAverages } from '../lib/recipes';
 import { TEAM_UTC_OFFSET_MS, localDay } from './config';
 import type { TeamBean } from './experiments';
@@ -69,10 +70,12 @@ interface DuelDbRow {
   revealed_at: number;
   recipe_x_id: string;
   recipe_y_id: string;
+  winner_recipe_id: string | null;
   x_votes: number;
   y_votes: number;
   bean_name: string | null;
   /** Barista duels: who brewed each cup. */
+  barista_x_id: string | null;
   barista_x: string | null;
   barista_y: string | null;
 }
@@ -237,8 +240,8 @@ export async function buildContextPack(db: D1Database, me: AuthMember, opts: { r
       .all<BrewDbRow>(),
     db
       .prepare(
-        `SELECT d.revealed_at, d.recipe_x_id, d.recipe_y_id, d.x_votes, d.y_votes, b.name AS bean_name,
-                bx.name AS barista_x, bw.name AS barista_y
+        `SELECT d.revealed_at, d.recipe_x_id, d.recipe_y_id, d.winner_recipe_id, d.x_votes, d.y_votes, b.name AS bean_name,
+                d.barista_x_id, bx.name AS barista_x, bw.name AS barista_y
            FROM duels d LEFT JOIN beans b ON b.id = d.bean_id
            LEFT JOIN members bx ON bx.id = d.barista_x_id
            LEFT JOIN members bw ON bw.id = d.barista_y_id
@@ -273,7 +276,7 @@ export async function buildContextPack(db: D1Database, me: AuthMember, opts: { r
     recent_duels: duels.results.map((d) => {
       const x = codeById.get(d.recipe_x_id) ?? null;
       const y = codeById.get(d.recipe_y_id) ?? null;
-      const side = d.x_votes > d.y_votes ? 'x' : d.y_votes > d.x_votes ? 'y' : null;
+      const side = winnerSide(d);
       // A barista duel: two teammates, each brewing their recipe; the winner is a person.
       if (d.barista_x && d.barista_y) {
         return {

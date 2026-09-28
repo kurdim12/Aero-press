@@ -138,8 +138,11 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   - The last vote reveals the duel in the same D1 batch, through a conditional UPDATE, so racing
     votes reveal it once. The creator or owner can reveal early once at least one vote is in, or
     cancel.
-  - Rematch swaps X and Y and keeps the judges, minus whoever starts it. It's idempotent via
-    `rematch_id`.
+  - Rematch swaps X and Y (the brief's rule) and keeps the judges, minus whoever starts it. It's
+    idempotent via `rematch_id`. Judges who saw the first reveal could work out the swapped cups,
+    so `rematch_of` goes only to the creator until the rematch is revealed.
+  - A vote and its scores are inserted only while the duel is still `judging` (the conditional
+    INSERT sits in the batch), so a vote racing an early reveal or a cancel gets `duel_over`.
   - `toDuelView` is the only place a duel becomes a response. Recipe identities and notes go to
     the creator before the reveal, and to everyone after it. Judges' choices appear only after
     the reveal. `worker/test/duels.test.ts` checks raw JSON for leaks.
@@ -162,15 +165,19 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
       and can't change.
     - They're shown only after the reveal: the averages per cup (`result.scores`) and each
       judge's own scores. Only the single-duel view loads them; the polled list doesn't.
-    - The judge's unsent sheet survives a reload (localStorage `ap-judge-sheet:<id>`).
-  - The votes decide the winner. `result.winner` comes from `x_votes`/`y_votes`, not from
-    `winner_recipe_id`, because both cups can be one recipe.
+    - The judge's unsent sheet survives a reload (`web/src/judgeSheet.ts`, localStorage
+      `ap-judge-sheet:<member>:<duel>`). Keyed by member and cleared at sign-out, so the next
+      judge on a shared phone never sees or sends someone else's scores.
+  - `winnerSide` (lib/duels.ts) is the one winner rule. A barista duel goes by its votes, since
+    both cups can be one recipe. A recipe duel goes by `winner_recipe_id`, because v1 imports keep
+    a winner without vote counts.
   - Recipe Elo counts recipe duels only: `loadRevealedDuels`, the bean filter and compare's
     head-to-head all skip barista duels.
   - Baristas are ranked by `GET /api/duels/standings`, which replays Elo over members and averages
     the overall score their cups got. The Duel tab reads it once, not on every poll.
   - The coach's duel read gets the barista names and the judges' averages. The Board's activity
-    counts baristas as participants, and the backup includes `duel_scores`.
+    counts baristas as participants, its competition-coffee check counts barista duels too, and
+    the backup includes `duel_scores`.
 
 - AI (phase 5), all in `worker/src/ai/`:
   - Every call checks the monthly budget first (month-to-date `SUM(cost_usd)` in Amman time, the

@@ -391,7 +391,7 @@ export const duelVoteInput = z.object({
   choice: z.enum(DUEL_CHOICES, { error: 'Vote X, Y or can’t separate.' }),
   scores: z.object(
     { x: cupScoresInput, y: cupScoresInput },
-    { error: 'Score both cups before you vote.' },
+    { error: 'Score both cups before you vote. No score sheet on your screen? Reload the app to update it.' },
   ),
 });
 export type DuelVoteInput = z.input<typeof duelVoteInput>;

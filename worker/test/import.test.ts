@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { MeResponse, RecipeDetailResponse, RecipeRow, RecipesResponse } from '../../shared/types';
+import type { DuelView, DuelsResponse, MeResponse, RecipeDetailResponse, RecipeRow, RecipesResponse } from '../../shared/types';
+import fixture from '../../test/fixtures/v1-backup.json';
 import { TEAM_PIN, addBarista, freshDb, importV1, recipeBody, resultFor, setupTeam, signIn } from './helpers';
 
 beforeEach(freshDb);
@@ -56,6 +57,18 @@ describe('v1 import', () => {
     expect(resultFor(again, 'settings')).toMatchObject({ inserted: 0, already_there: 3 });
     const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM recipes').first<{ n: number }>();
     expect(count?.n).toBe(7);
+  });
+
+  it('keeps the winner of an old duel saved without vote counts', async () => {
+    const { owner } = await setupTeam();
+    const data = structuredClone(fixture) as { duels: { id: string; xVotes: number; yVotes: number; winner: string }[] };
+    const d1 = data.duels.find((d) => d.id === 'd-1')!;
+    Object.assign(d1, { xVotes: 0, yVotes: 0, winner: 'r-2' });
+    await importV1(owner, data);
+    const duel = (await owner.get<DuelView>('/api/duels/d-1')).body;
+    expect(duel.result).toMatchObject({ x_votes: 0, y_votes: 0, winner: 'y' });
+    const list = (await owner.get<DuelsResponse>('/api/duels')).body.recent.find((d) => d.id === 'd-1');
+    expect(list?.result?.winner).toBe('y');
   });
 
   it('reports what it had to change', async () => {
