@@ -102,11 +102,13 @@ describe('barista duels', () => {
     const recipes = (await t.owner.get<RecipesResponse>('/api/recipes')).body.recipes;
     for (const r of recipes) expect(r).toMatchObject({ elo: 1500, duels: 0 });
 
-    // A rematch swaps the cups and keeps the baristas and judges.
+    // A rematch keeps the baristas, each with their own recipe, and the judges; a new coin flip
+    // decides the cups.
     const rematch = (await t.owner.post<DuelView>(`/api/duels/${host.id}/rematch`)).body;
-    expect(rematch.x_barista?.id).toBe(host.y_barista?.id);
-    expect(rematch.y_barista?.id).toBe(host.x_barista?.id);
-    expect(rematch.x?.id).toBe(host.y?.id);
+    const recipeOf = (view: DuelView, barista: string) => (view.x_barista?.id === barista ? view.x?.id : view.y?.id);
+    expect([rematch.x_barista?.id, rematch.y_barista?.id].sort()).toEqual([t.lina.id, t.omar.id].sort());
+    expect(recipeOf(rematch, t.lina.id)).toBe(t.a.id);
+    expect(recipeOf(rematch, t.omar.id)).toBe(t.b.id);
     expect(rematch.judges.map((j) => j.id).sort()).toEqual([t.sara.id, t.yousef.id].sort());
 
     // Scores go into the backup with the finished duel.

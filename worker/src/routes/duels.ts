@@ -330,9 +330,10 @@ duelRoutes.post('/:id/cancel', async (c) => {
 });
 
 /**
- * Rematch a revealed duel with X and Y swapped, so cup position can't bias the result. Same bean,
- * judges and (in a barista duel) baristas; whoever starts it pours or hosts, so they drop out of
- * the judges. Tapping twice returns the same rematch.
+ * Rematch a revealed duel: same recipes, bean, judges and (in a barista duel) baristas, with a
+ * fresh coin flip for the cups. (The brief swapped X and Y; the owner chose the coin, because the
+ * judges saw the first reveal and could work out a swap.) Whoever starts it pours or hosts, so
+ * they drop out of the judges. Tapping twice returns the same rematch.
  */
 duelRoutes.post('/:id/rematch', async (c) => {
   const id = idParam(c, 'duel');
@@ -351,10 +352,13 @@ duelRoutes.post('/:id/rematch', async (c) => {
   if (judges.length === 0) {
     throw new ApiError(409, 'no_judges_left', 'Nobody is left to judge a rematch. Start a new duel and pick judges.');
   }
+  const keep = coinFlip();
+  const baristas = duel.barista_x_id && duel.barista_y_id ? { x: duel.barista_x_id, y: duel.barista_y_id } : null;
   const rematchId = await insertDuel(db, me, {
-    x: duel.recipe_y_id,
-    y: duel.recipe_x_id,
-    baristas: duel.barista_x_id && duel.barista_y_id ? { x: duel.barista_y_id, y: duel.barista_x_id } : null,
+    x: keep ? duel.recipe_x_id : duel.recipe_y_id,
+    y: keep ? duel.recipe_y_id : duel.recipe_x_id,
+    // Each barista keeps their recipe: the pair moves together.
+    baristas: baristas && (keep ? baristas : { x: baristas.y, y: baristas.x }),
     bean_id: duel.bean_id,
     judges,
     notes: null,

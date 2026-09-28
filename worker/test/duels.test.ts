@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DuelView, DuelsResponse, RecipeRow, RecipesResponse } from '../../shared/types';
 import { type Client, TEAM_PIN, addBarista, freshDb, judgeScores, recipeBody, setupTeam, signIn, vote } from './helpers';
 
@@ -174,7 +174,7 @@ describe('blind duels', () => {
     expect(list.recent.map((d) => d.status)).toEqual(['cancelled', 'revealed']);
   });
 
-  it('rematches with X and Y swapped, once, and every phone can follow it', async () => {
+  it('rematches once with a fresh coin flip for the cups, and every phone can follow it', async () => {
     const { owner, a, b, judges } = await duelTeam();
     const duel = await startDuel(owner, a, b, [judges[0]!.id, judges[1]!.id]);
     expect((await owner.post(`/api/duels/${duel.id}/rematch`)).body.error.code).toBe('not_revealed');
@@ -185,8 +185,7 @@ describe('blind duels', () => {
     const rematch = await owner.post<DuelView>(`/api/duels/${duel.id}/rematch`);
     expect(rematch.status).toBe(201);
     expect(rematch.body).toMatchObject({ status: 'pouring', rematch_of: duel.id });
-    expect(rematch.body.x?.id).toBe(duel.y?.id);
-    expect(rematch.body.y?.id).toBe(duel.x?.id);
+    expect([rematch.body.x?.id, rematch.body.y?.id].sort()).toEqual([duel.x?.id, duel.y?.id].sort());
     expect(rematch.body.judges.map((j) => j.id).sort()).toEqual([judges[0]!.id, judges[1]!.id].sort());
 
     const again = await owner.post<DuelView>(`/api/duels/${duel.id}/rematch`);
@@ -194,7 +193,43 @@ describe('blind duels', () => {
     const judgeView = (await judges[0]!.client.get<DuelView>(`/api/duels/${duel.id}`)).body;
     expect(judgeView.rematch_id).toBe(rematch.body.id);
     expect((await judges[0]!.client.get<DuelView>(`/api/duels/${rematch.body.id}`)).body.x).toBeNull();
-    // The judges saw the first reveal, and a rematch swaps the cups: they aren't told it's a rematch.
+    // Before its reveal, judges aren't told it's a rematch.
     expect((await judges[0]!.client.get<DuelView>(`/api/duels/${rematch.body.id}`)).body.rematch_of).toBeNull();
+  });
+
+  describe('the coin', () => {
+    // The coin flip reads one random byte (IDs and tokens read more, and stay random): force it.
+    let coin = 1;
+    beforeEach(() => {
+      const real = crypto.getRandomValues.bind(crypto);
+      vi.spyOn(crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView | null>(array: T): T => {
+        if (array instanceof Uint8Array && array.length === 1) {
+          array[0] = coin;
+          return array;
+        }
+        return real(array);
+      });
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it('decides a rematch afresh: the cups can stay or swap, so the last reveal gives nothing away', async () => {
+      const { owner, a, b, judges } = await duelTeam();
+      const revealed = async () => {
+        const duel = await startDuel(owner, a, b, [judges[0]!.id]);
+        await owner.post(`/api/duels/${duel.id}/ready`);
+        await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
+        return duel;
+      };
+      coin = 1; // heads: recipe A is X, and a rematch keeps the cups
+      const first = await revealed();
+      expect(first.x?.id).toBe(a.id);
+      const kept = (await owner.post<DuelView>(`/api/duels/${first.id}/rematch`)).body;
+      expect([kept.x?.id, kept.y?.id]).toEqual([a.id, b.id]);
+
+      const second = await revealed();
+      coin = 0; // tails: the rematch swaps them
+      const swapped = (await owner.post<DuelView>(`/api/duels/${second.id}/rematch`)).body;
+      expect([swapped.x?.id, swapped.y?.id]).toEqual([b.id, a.id]);
+    });
   });
 });

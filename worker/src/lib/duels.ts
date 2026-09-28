@@ -280,8 +280,8 @@ export function toDuelView(
           scores: averageScores(scoreRows),
         }
       : null,
-    // A rematch swaps the cups, so judges who saw the first reveal could tell them apart:
-    // before this reveal, only the creator learns it is a rematch.
+    // Before this reveal only the creator learns it's a rematch, so the last result can't prime
+    // the judges. (The cups come from a fresh coin flip, so knowing wouldn't give them away.)
     rematch_of: showRecipes ? d.rematch_of : null,
     rematch_id: d.rematch_id,
     // Notes can name the recipes ("R3 vs R5, hotter"), so they follow the same rule.

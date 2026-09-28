@@ -139,9 +139,14 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   - The last vote reveals the duel in the same D1 batch, through a conditional UPDATE, so racing
     votes reveal it once. The creator or owner can reveal early once at least one vote is in, or
     cancel.
-  - Rematch swaps X and Y (the brief's rule) and keeps the judges, minus whoever starts it. It's
-    idempotent via `rematch_id`. Judges who saw the first reveal could work out the swapped cups,
-    so `rematch_of` goes only to the creator until the rematch is revealed.
+  - Rematch keeps the recipes, the bean, the judges (minus whoever starts it) and, in a barista
+    duel, each barista with their own recipe. A fresh coin flip decides the cups.
+    - The brief said to swap X and Y. The user chose the coin (28 Sept 2026), because judges who
+      saw the first reveal could work out a swap.
+    - It's idempotent via `rematch_id`, and `rematch_of` goes only to the creator until the
+      rematch is revealed.
+    - `duels.test.ts` forces the coin by stubbing `crypto.getRandomValues` for one-byte arrays
+      (the flip reads one byte; IDs and tokens read more).
   - A vote and its scores are inserted only while the duel is still `judging` (the conditional
     INSERT sits in the batch), so a vote racing an early reveal or a cancel gets `duel_over`.
   - `toDuelView` is the only place a duel becomes a response. Recipe identities and notes go to
