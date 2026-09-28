@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { OPENROUTER_MODEL_IDS } from './aiModels';
 import { BREW_LIMITS } from './limits';
-import { COMPARE_KINDS, DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS, TIPS_SUBJECTS } from './types';
+import { COACH_RULES_MAX, COMPARE_KINDS, DUEL_CHOICES, EXPORT_PARTS, IMPORT_CHUNK_MAX, METHODS, READINESS_VERDICTS, TIPS_SUBJECTS } from './types';
 
 export const PIN_PATTERN = /^\d{4,8}$/;
 
@@ -169,6 +169,8 @@ export const teamSettingsInput = z.object({
   ai_coach_model: z.enum(OPENROUTER_MODEL_IDS, { error: 'Pick a model from the list.' }).nullable().optional(),
   ai_quick_model: z.enum(OPENROUTER_MODEL_IDS, { error: 'Pick a model from the list.' }).nullable().optional(),
   ai_auto_tips: z.boolean({ error: 'Turn automatic tips on or off.' }).optional(),
+  /** Left out: keep what's saved. Blank: no house rules. */
+  coach_rules: text(COACH_RULES_MAX),
 });
 export type TeamSettingsInput = z.input<typeof teamSettingsInput>;
 

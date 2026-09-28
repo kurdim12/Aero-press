@@ -427,6 +427,23 @@ export const strings = {
     modelOption: (label: string, input: string, output: string) => `${label} · $${input} / $${output}`,
     anthropicModels: 'The coach uses Claude Sonnet 5 and Haiku 4.5 through your Anthropic key. Add an OpenRouter key in Cloudflare to choose other models here.',
     noKeyModels: 'Add an OpenRouter API key in Cloudflare to choose the coach’s models here (the README says how).',
+    houseRules: 'House rules for the coach',
+    houseRulesPlaceholder: 'e.g. Our kettle holds 85–100 °C in 1 °C steps. Grinder: Comandante C40, in clicks. Water: Third Wave Water Classic. We brew inverted.',
+    houseRulesHint: 'The coach follows these in every answer: your equipment and its limits, your water, anything it must never suggest.',
+  },
+
+  knowledge: {
+    title: 'Coach knowledge',
+    row: 'What the coach knows',
+    rowSub: 'The reference behind every answer, with its sources',
+    intro:
+      'Every coach answer starts from this reference: the World AeroPress Championship rules, the podium recipes, and coffee science checked against published sources (September 2026). Each answer gets the sections that fit the question, and the team’s own results come first.',
+    houseRules: 'House rules',
+    houseRulesNone: 'No house rules yet. The owner can add the team’s equipment and limits, and the coach will follow them.',
+    houseRulesAdd: 'Add house rules',
+    houseRulesEdit: 'Edit house rules',
+    reference: 'The reference',
+    sources: 'Sources',
   },
 
   backup: {

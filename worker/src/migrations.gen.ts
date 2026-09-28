@@ -95,5 +95,11 @@ export const MIGRATIONS: Migration[] = [
       "CREATE TABLE duel_scores (\n  duel_id TEXT NOT NULL REFERENCES duels (id) ON DELETE CASCADE,\n  judge_member_id TEXT NOT NULL REFERENCES members (id),\n  cup TEXT NOT NULL CHECK (cup IN ('x', 'y')),\n  sweetness REAL NOT NULL,\n  acidity REAL NOT NULL,\n  body REAL NOT NULL,\n  clarity REAL NOT NULL,\n  finish REAL NOT NULL,\n  overall REAL NOT NULL,\n  PRIMARY KEY (duel_id, judge_member_id, cup)\n)",
       "CREATE INDEX idx_duel_scores_judge ON duel_scores (judge_member_id)"
     ]
+  },
+  {
+    "name": "0008_coach_rules.sql",
+    "queries": [
+      "-- The owner's house rules for the coach: equipment limits, water, preferences. Every coach call\n-- gets them as rules it must follow (NULL = none).\nALTER TABLE teams ADD COLUMN coach_rules TEXT;\n"
+    ]
   }
 ];

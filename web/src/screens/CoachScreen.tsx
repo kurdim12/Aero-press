@@ -7,6 +7,7 @@ import { aiUsageQuery, readinessQuery, streamAnswer, todayQuery } from '../ai';
 import { api, errorMessage } from '../api';
 import { ExperimentCard } from '../components/ExperimentCard';
 import { FormError, SelectField, TextAreaField, TextField } from '../components/Fields';
+import { ChevronIcon } from '../components/Icons';
 import { TopBar } from '../components/TopBar';
 import { formatDate } from '../format';
 import { useOnline } from '../offline/useOnline';
@@ -68,6 +69,15 @@ export function CoachScreen() {
           </p>
         )}
         {about && <AskSection key={`${about.kind}:${about.id}`} enabled={enabled} about={about} />}
+        <Link href="/coach/knowledge" className="row knowledge-row">
+          <span className="row-main">
+            <span className="row-title">{strings.knowledge.row}</span>
+            <span className="row-sub">{strings.knowledge.rowSub}</span>
+          </span>
+          <span className="row-trail">
+            <ChevronIcon />
+          </span>
+        </Link>
         <TodayCard enabled={enabled} />
         <PlanSection enabled={enabled} recipes={recipes} beans={beans} />
         <AdaptSection enabled={enabled} recipes={recipes} beans={beans} />

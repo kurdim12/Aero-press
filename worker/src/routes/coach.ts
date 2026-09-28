@@ -29,6 +29,7 @@ import { requireMember } from '../middleware/auth';
 import { aiScope, aiSetup, aiUsage, askJson, askStream, monthSpend } from '../ai/client';
 import { localDay } from '../ai/config';
 import { beanFocus, buildContextPack, findRecipeByCode, recipeFocus } from '../ai/context';
+import { askSections } from '../ai/knowledge';
 import { championState, compareState, writeChampionBreakdown, writeCompare } from '../ai/explain';
 import { toExperiment, type TeamBean } from '../ai/experiments';
 import {
@@ -234,7 +235,8 @@ coachRoutes.post('/ask', async (c) => {
     focus = aboutBlock('bean', await beanFocus(scope.db, team, about.id, recipes));
   }
   const user = [dataBlock(pack), focus, ASK_INSTRUCTIONS, `<question>\n${question}\n</question>`].filter(Boolean).join('\n\n');
-  const { body, done } = await askStream(scope, 'ask', COACH_SYSTEM, user);
+  // The reference sections the question needs: the basics, what it names, what it's about.
+  const { body, done } = await askStream(scope, 'ask', COACH_SYSTEM, user, { sections: askSections(question, about?.kind) });
   c.executionCtx.waitUntil(done);
   return new Response(body, {
     headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },

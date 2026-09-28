@@ -21,7 +21,8 @@ type SettingsRow = Omit<TeamSettings, 'ai_auto_tips'> & { ai_auto_tips: number }
 async function readSettings(db: D1Database, teamId: string): Promise<TeamSettings> {
   const row = await db
     .prepare(
-      `SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, ai_auto_tips
+      `SELECT name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, ai_auto_tips,
+              coach_rules
          FROM teams WHERE id = ?`,
     )
     .bind(teamId)
@@ -45,7 +46,8 @@ teamRoutes.put('/', requireOwner, async (c) => {
       `UPDATE teams SET name = ?, champ_name = ?, champ_date = ?, comp_coffee_notes = ?, ai_monthly_budget_usd = ?,
               ai_coach_model = CASE WHEN ? THEN ? ELSE ai_coach_model END,
               ai_quick_model = CASE WHEN ? THEN ? ELSE ai_quick_model END,
-              ai_auto_tips = CASE WHEN ? THEN ? ELSE ai_auto_tips END
+              ai_auto_tips = CASE WHEN ? THEN ? ELSE ai_auto_tips END,
+              coach_rules = CASE WHEN ? THEN ? ELSE coach_rules END
         WHERE id = ?`,
     )
     .bind(
@@ -60,6 +62,8 @@ teamRoutes.put('/', requireOwner, async (c) => {
       input.ai_quick_model ?? null,
       input.ai_auto_tips !== undefined ? 1 : 0,
       input.ai_auto_tips ? 1 : 0,
+      input.coach_rules !== undefined ? 1 : 0,
+      input.coach_rules ?? null,
       me.team_id,
     )
     .run();

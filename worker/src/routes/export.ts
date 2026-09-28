@@ -42,7 +42,7 @@ exportRoutes.get('/', async (c) => {
   if (part === 'team') {
     const row = await db
       .prepare(
-        `SELECT id, name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, ai_auto_tips, created_at
+        `SELECT id, name, champ_name, champ_date, comp_coffee_notes, ai_monthly_budget_usd, ai_coach_model, ai_quick_model, ai_auto_tips, coach_rules, created_at
            FROM teams WHERE id = ?`,
       )
       .bind(team)

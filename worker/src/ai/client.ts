@@ -7,11 +7,13 @@ import type { z } from 'zod';
 import { type ModelRole, OPENROUTER_DEFAULTS, OPENROUTER_MODEL_IDS } from '../../../shared/aiModels';
 import type { AiUsage } from '../../../shared/types';
 import { chatStreamUsage } from '../../../shared/aiStream';
+import type { KnowledgeId } from '../../../shared/knowledge';
 import type { AppEnv, AuthMember } from '../env';
 import { ApiError } from '../lib/errors';
 import { newId } from '../lib/ids';
 import { type AiKind, EFFORT, KIND_ROLE, MAX_TOKENS, MODELS, costUsd, monthStart } from './config';
 import { parseAiJson, usageFromEvents } from './json';
+import { KIND_SECTIONS, withReference } from './knowledge';
 import { ProviderHttpError, ProviderStreamError, chatBody, openRouterStream, readChatStream } from './openrouter';
 import { type AiSetup, aiSetup, aiTransport } from './transport';
 
@@ -37,21 +39,22 @@ export function requireAi(scope: AiScope): AiSetup {
 
 const anthropic = (key: string) => new Anthropic({ apiKey: key, fetch: aiTransport.fetch, maxRetries: 1, timeout: 90_000 });
 
-/** This month's spend, the cap, and the models the owner picked. */
+/** This month's spend, the cap, the models the owner picked, and their house rules for the coach. */
 export interface TeamAi {
   spent: number;
   calls: number;
   cap: number;
   coach_model: string | null;
   quick_model: string | null;
+  coach_rules: string | null;
 }
 
 export async function monthSpend(db: D1Database, teamId: string): Promise<TeamAi> {
   const [team, usage] = await Promise.all([
     db
-      .prepare('SELECT ai_monthly_budget_usd AS cap, ai_coach_model, ai_quick_model FROM teams WHERE id = ?')
+      .prepare('SELECT ai_monthly_budget_usd AS cap, ai_coach_model, ai_quick_model, coach_rules FROM teams WHERE id = ?')
       .bind(teamId)
-      .first<{ cap: number; ai_coach_model: string | null; ai_quick_model: string | null }>(),
+      .first<{ cap: number; ai_coach_model: string | null; ai_quick_model: string | null; coach_rules: string | null }>(),
     db
       .prepare('SELECT COALESCE(SUM(cost_usd), 0) AS spent, COUNT(*) AS calls FROM ai_calls WHERE team_id = ? AND created_at >= ?')
       .bind(teamId, monthStart())
@@ -63,6 +66,7 @@ export async function monthSpend(db: D1Database, teamId: string): Promise<TeamAi
     cap: team?.cap ?? 0,
     coach_model: team?.ai_coach_model ?? null,
     quick_model: team?.ai_quick_model ?? null,
+    coach_rules: team?.coach_rules ?? null,
   };
 }
 
@@ -96,6 +100,19 @@ async function checkBudget(scope: AiScope): Promise<TeamAi> {
     throw new ApiError(402, 'ai_budget_exceeded', 'AI budget for this month is used up. The owner can raise it in Settings.');
   }
   return team;
+}
+
+/** Which reference sections a call gets, when not its kind's own (a question picks its own). */
+export interface CallOptions {
+  sections?: readonly KnowledgeId[];
+}
+
+/**
+ * The system prompt as sent: the call's own, the reference sections for its job, and the owner's
+ * house rules (every call but quick log, which only reads a note).
+ */
+function fullSystem(kind: AiKind, system: string, team: TeamAi, opts: CallOptions): string {
+  return withReference(system, opts.sections ?? KIND_SECTIONS[kind], kind === 'quickLog' ? null : team.coach_rules);
 }
 
 /** About 3 characters a token, rounded up: a reservation should err high. */
@@ -187,9 +204,11 @@ function anthropicParams(model: string, kind: AiKind, system: string, user: stri
  * One call, text back. It streams under the hood on either provider: a timeout only covers the
  * wait for the first bytes, so a long answer is never cut off (and then paid for again).
  */
-export async function askText(scope: AiScope, kind: AiKind, system: string, user: string): Promise<string> {
+export async function askText(scope: AiScope, kind: AiKind, base: string, user: string, opts: CallOptions = {}): Promise<string> {
   const setup = requireAi(scope);
-  const model = modelFor(setup, kind, await checkBudget(scope));
+  const team = await checkBudget(scope);
+  const model = modelFor(setup, kind, team);
+  const system = fullSystem(kind, base, team, opts);
   const reservation = await reserve(scope, kind, model, system, user);
 
   if (setup.provider === 'openrouter') {
@@ -230,11 +249,18 @@ export async function askText(scope: AiScope, kind: AiKind, system: string, user
 }
 
 /** One call whose reply must be JSON matching `schema`; one retry, told what was wrong. */
-export async function askJson<S extends z.ZodType>(scope: AiScope, kind: AiKind, schema: S, system: string, user: string): Promise<z.output<S>> {
-  const first = parseAiJson(schema, await askText(scope, kind, system, user));
+export async function askJson<S extends z.ZodType>(
+  scope: AiScope,
+  kind: AiKind,
+  schema: S,
+  system: string,
+  user: string,
+  opts: CallOptions = {},
+): Promise<z.output<S>> {
+  const first = parseAiJson(schema, await askText(scope, kind, system, user, opts));
   if (first.ok) return first.data;
   const retry = `${user}\n\nYour previous reply couldn’t be used (${first.error}). Reply again with ONLY the JSON, in exactly the format above.`;
-  const second = parseAiJson(schema, await askText(scope, kind, system, retry));
+  const second = parseAiJson(schema, await askText(scope, kind, system, retry, opts));
   if (second.ok) return second.data;
   console.error('AI reply invalid twice', kind, second.error);
   throw new ApiError(502, 'ai_bad_output', 'The coach’s answer came back unreadable twice. Try again in a moment.');
@@ -248,11 +274,14 @@ export async function askJson<S extends z.ZodType>(scope: AiScope, kind: AiKind,
 export async function askStream(
   scope: AiScope,
   kind: AiKind,
-  system: string,
+  base: string,
   user: string,
+  opts: CallOptions = {},
 ): Promise<{ body: ReadableStream<Uint8Array>; done: Promise<void> }> {
   const setup = requireAi(scope);
-  const model = modelFor(setup, kind, await checkBudget(scope));
+  const team = await checkBudget(scope);
+  const model = modelFor(setup, kind, team);
+  const system = fullSystem(kind, base, team, opts);
   const reservation = await reserve(scope, kind, model, system, user);
   let upstream: Response;
   try {

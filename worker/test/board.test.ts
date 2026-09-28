@@ -148,7 +148,7 @@ describe('team settings', () => {
 
     expect((await lina.put('/api/team', body)).status).toBe(403);
     const saved = await owner.put<TeamSettings>('/api/team', body);
-    expect(saved.body).toEqual({ ...body, ai_monthly_budget_usd: 25.56, ai_coach_model: null, ai_quick_model: null, ai_auto_tips: true });
+    expect(saved.body).toEqual({ ...body, ai_monthly_budget_usd: 25.56, ai_coach_model: null, ai_quick_model: null, ai_auto_tips: true, coach_rules: null });
     expect((await lina.get<TeamSettings>('/api/team')).body.champ_name).toBe('JAC 2026');
     expect((await owner.get<MeResponse>('/api/me')).body.team).toMatchObject({ name: 'Kurdi Lab', champ_date: '2026-11-20' });
 

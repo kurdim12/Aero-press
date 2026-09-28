@@ -98,7 +98,9 @@ describe('OpenRouter', () => {
     expect(call.body).toMatchObject({ model: 'google/gemini-3.8-flash', stream: true, max_tokens: 8000, reasoning: { effort: 'medium', exclude: true } });
     const messages = call.body.messages as { role: string; content: string }[];
     expect(messages.map((m) => m.role)).toEqual(['system', 'user']);
-    expect(messages[0]!.content).toContain('World AeroPress Championship coach');
+    expect(messages[0]!.content).toContain('World AeroPress Championship');
+    // The reference goes to either provider.
+    expect(messages[0]!.content).toContain('## Water temperature');
 
     // Settled from OpenRouter's own figures, not the price list.
     expect((await spendRows()).results).toEqual([{ kind: 'plan', model: 'google/gemini-3.8-flash', input_tokens: 3000, output_tokens: 700, cost_usd: 0.0049 }]);

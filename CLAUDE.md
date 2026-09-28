@@ -41,7 +41,8 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   except plain-http local/private-network hosts (so LAN phone testing works in dev).
 - Schema additions beyond the brief: `teams.pin_hash/pin_salt`, `login_attempts.first_failed_at`,
   `duel_judges` table, `duels.rematch_of`, `teams.ai_coach_model/ai_quick_model/ai_auto_tips`,
-  `ai_tips` and `ai_reads` tables, `duels.barista_x_id/barista_y_id`, `duel_scores` table.
+  `ai_tips` and `ai_reads` tables, `duels.barista_x_id/barista_y_id`, `duel_scores` table,
+  `teams.coach_rules`.
 - Hosting: the user stays on **Workers Free** (decided after checkpoint 1; they have the Cloudflare
   Pro *website* plan, which doesn't include Workers Paid). Free allows 10 ms of CPU per request.
   So PIN hashes use 20k PBKDF2 rounds (`PIN_HASH_ITERATIONS` in `worker/src/config.ts`), a
@@ -304,6 +305,38 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   - "Add to our recipes" opens the new-recipe form through a draft (name `WAC <year> <place> ·
     <name>`, and the notes carry the sources).
   - A unit test validates every entry against `recipeInput`.
+- The coach's knowledge (the user wanted championship-level answers: the coach had suggested 84 °C
+  with no reason tied to the coffee):
+  - `shared/knowledge.ts` is the reference: 15 sections (dialling in, extraction, temperature,
+    grind, ratio and bypass, AeroPress technique, water, beans, processing, roast and rest,
+    sourcing, tasting and judging, the WAC, fixing a cup, podium facts).
+    - Each section is plain text with its sources.
+    - Facts were checked by research agents in September 2026, from search summaries (pages
+      couldn't be opened from here). What sources contest is written as a tendency.
+    - The podium section is computed from `CHAMPION_RECIPES`, so it can't drift from the library.
+    - Rules as found: 5 minutes including grinding, an 18 g dose cap since 2021 (some 2024
+      national rulebooks say 20 g), Original or Clear only, the Flow Control cap from 2025, at
+      least 150 ml served.
+    - Altitude: water boils at about 96.5–97.7 °C in Amman, and near 92.5 °C at the 2026 final
+      in Mexico City.
+  - `worker/src/ai/knowledge.ts` decides what each call is taught:
+    - `KIND_SECTIONS` lists each kind's sections. Quick log gets none.
+    - Ask gets `askSections(question, about)`: the basics, plus sections whose keywords appear
+      in the question. Keywords are English and Arabic; a leading space means "word start". It
+      takes at most 8 sections, and a question that names nothing gets temperature, grind and
+      AeroPress.
+    - One call carries up to about 5k tokens of reference; a unit test caps it.
+  - `client.ts` builds every system prompt through `withReference`: the call's own prompt, then
+    `<reference>`, then `<house_rules>` last, so they win. No call site can skip it.
+  - `COACH_SYSTEM`: diagnose first, give every number a reason (temperature above all), cite the
+    evidence, follow the reference over general knowledge, respect the house rules.
+  - House rules: `teams.coach_rules` (migration 0008, `COACH_RULES_MAX` 1500), set in Settings.
+    - The PUT keeps them when the field is left out (older phones) and clears them when it's
+      blank.
+    - `monthSpend` reads them with the budget, so there's no extra query. They go with every call
+      except quick log, and into the backup.
+  - "What the coach knows" (`/coach/knowledge`, a lazy chunk, linked at the top of the Coach tab)
+    shows the house rules and every section with its sources.
 
 - Board (phase 6), `GET /api/board[?member=<id>]`:
   - The owner gets the team; `?member` gives one member's own board. Baristas always get their

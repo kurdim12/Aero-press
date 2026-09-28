@@ -111,7 +111,8 @@ describe('coach: plan and adapt', () => {
     // The request went to the coach model with the spec's system prompt and the team's data.
     const request = requests[0]!;
     expect(request.model).toBe('claude-sonnet-5');
-    expect(String(request.system)).toContain('World AeroPress Championship coach');
+    expect(String(request.system)).toContain('World AeroPress Championship');
+    expect(String(request.system)).toContain('<reference>');
     expect(JSON.stringify(request.messages)).toContain(r1.display_code);
     const rows = (await spendRows()).results;
     expect(rows).toEqual([{ kind: 'plan', model: 'claude-sonnet-5', input_tokens: 2000, output_tokens: 500, cost_usd: 0.009 }]);

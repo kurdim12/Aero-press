@@ -659,7 +659,12 @@ export interface TeamSettings {
   ai_quick_model: string | null;
   /** The coach writes tips on its own when a bean or recipe is added. */
   ai_auto_tips: boolean;
+  /** The owner's house rules: limits every coach answer must respect (null = none). */
+  coach_rules: string | null;
 }
+
+/** Longest house rules the owner can save (about 400 tokens in every coach call). */
+export const COACH_RULES_MAX = 1500;
 
 /** Backup parts, one table each, so no single request builds the whole file. */
 export const EXPORT_PARTS = [

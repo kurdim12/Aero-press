@@ -37,6 +37,8 @@ import { strings } from './strings';
 const championScreens = () => import('./screens/ChampionsScreen');
 const ChampionsScreen = lazy(() => championScreens().then((m) => ({ default: m.ChampionsScreen })));
 const ChampionScreen = lazy(() => championScreens().then((m) => ({ default: m.ChampionScreen })));
+// So does the coach's reference.
+const KnowledgeScreen = lazy(() => import('./screens/KnowledgeScreen').then((m) => ({ default: m.KnowledgeScreen })));
 
 export function App() {
   const status = useQuery(setupStatusQuery);
@@ -113,6 +115,11 @@ function Shell({ me }: { me: MeResponse }) {
           <Route path="/duel/new" component={DuelNewScreen} />
           <Route path="/duel/:id">{(p) => <DuelScreen id={p.id} />}</Route>
           <Route path="/coach" component={CoachScreen} />
+          <Route path="/coach/knowledge">
+            <Suspense fallback={<Splash />}>
+              <KnowledgeScreen />
+            </Suspense>
+          </Route>
           <Route path="/settings" component={SettingsScreen} />
           <Route path="/settings/team">{isOwner ? <TeamSettingsScreen /> : <Redirect to="/settings" replace />}</Route>
           <Route path="/settings/members">{isOwner ? <MembersScreen /> : <Redirect to="/settings" replace />}</Route>
