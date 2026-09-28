@@ -54,23 +54,41 @@ const oneDecimal = (n: number) => String(Math.round(n * 10) / 10);
 const range = (values: number[], unit: string) => `${oneDecimal(Math.min(...values))}–${oneDecimal(Math.max(...values))}${unit}`;
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
-/** One champion's recipe in a line. */
-function recipeLine(c: ChampionRecipe): string {
-  const r = c.recipe!;
+/** The coffee a champion brewed, when the notes name it ("Coffee: …."). */
+export const championCoffee = (c: ChampionRecipe): string | null => /Coffee: (.+?)\.(?: |$)/.exec(c.notes ?? '')?.[1] ?? null;
+
+/** A recipe in a line, from its fields, for a champion whose full method isn't published. */
+function fieldsLine(r: NonNullable<ChampionRecipe['recipe']>): string {
   const parts = [
     r.method,
-    r.filter,
     r.dose_g != null && r.water_g != null ? `${r.dose_g} g coffee, ${r.water_g} g water` : null,
     r.temp_c != null ? `${r.temp_c} °C` : null,
-    r.grind_setting ? `grind ${r.grind_setting}${r.grinder ? ` (${r.grinder})` : ''}` : null,
     r.bloom_water_g === 0 ? 'no bloom' : r.bloom_water_g ? `bloom ${r.bloom_water_g} g${r.bloom_ends_s ? ` to ${clock(r.bloom_ends_s)}` : ''}` : null,
     r.agitation,
     r.press_starts_s != null ? `press at ${clock(r.press_starts_s)}${r.press_duration_s ? ` for ${r.press_duration_s} s` : ''}` : null,
     r.bypass_g ? `bypass ${r.bypass_g} g${r.bypass_temp ? ` at ${r.bypass_temp}` : ''}` : null,
-    r.water_recipe ? `water: ${r.water_recipe}` : null,
   ];
-  return `- ${c.year} ${c.name} (${c.country}): ${parts.filter(Boolean).join('; ')}.`;
+  return parts.filter(Boolean).join('; ');
 }
+
+/** A winner in full: the coffee, the kit and the published method (which has the dilution). */
+function winnerLine(c: ChampionRecipe): string {
+  const r = c.recipe!;
+  const coffee = championCoffee(c);
+  const parts = [
+    coffee ? `Coffee: ${coffee}.` : null,
+    r.grinder ? `Grinder: ${r.grinder}${r.grind_setting ? `, ${r.grind_setting}` : ''}.` : r.grind_setting ? `Grind: ${r.grind_setting}.` : null,
+    r.filter ? `Filter: ${r.filter}.` : null,
+    r.water_recipe ? `Water: ${r.water_recipe}.` : null,
+    `Method: ${r.other_steps ?? `${fieldsLine(r)}.`}`,
+  ];
+  return `- ${c.year} ${c.name} (${c.country}), ${r.temp_c != null ? `${r.temp_c} °C` : 'temperature not published'}. ${parts.filter(Boolean).join(' ')}`;
+}
+
+/** Filter wording in the library that means it was rinsed or wetted ("dry (not rinsed)" isn't). */
+const RINSED = /(?<!not )(rinse|wet|soak)/;
+/** Two filters stacked: two papers, or paper with metal. */
+const TWO_FILTERS = /\b(2|two)\b[^,;]*?\bpaper|paper filter plus|plus 1 metal|metal filter plus/;
 
 /** Medians, ranges and patterns over the published podium recipes, and the recent winners in full. */
 export function podiumBody(champions: readonly ChampionRecipe[]): string {
@@ -87,9 +105,12 @@ export function podiumBody(champions: readonly ChampionRecipe[]): string {
   const pressStarts = nums(recipes.map((r) => r.press_starts_s)).filter((s) => s > 0);
   const pressTimes = nums(recipes.map((r) => r.press_duration_s)).filter((s) => s > 0);
   const bypass = nums(recipes.map((r) => r.bypass_g)).filter((g) => g > 0);
+  // Some top up to a target weight instead of adding a set amount: no amount, but a bypass water.
+  const toppedUp = recipes.filter((r) => r.bypass_g == null && r.bypass_temp != null).length;
+  const undiluted = recipes.filter((r) => r.bypass_g === 0).length;
   const filters = recipes.map((r) => (r.filter ?? '').toLowerCase());
-  const rinsed = filters.filter((f) => /rinse|wet|soak/.test(f)).length;
-  const doubled = filters.filter((f) => /\b(2|two) paper|plus 1 metal|metal filter plus|paper filter plus/.test(f)).length;
+  const rinsed = filters.filter((f) => RINSED.test(f)).length;
+  const doubled = filters.filter((f) => TWO_FILTERS.test(f)).length;
   const metal = filters.filter((f) => f.includes('metal')).length;
   const paper = filters.filter((f) => /paper|aesir|kalita|cafec/.test(f)).length;
   const recent = all.filter((c) => c.year >= 2021);
@@ -111,14 +132,14 @@ export function podiumBody(champions: readonly ChampionRecipe[]): string {
     `- Water temperature: median ${oneDecimal(median(temps))} °C (${range(temps, ' °C')}). Winners: ${winnerTemps.join(', ')}.`,
     `- Bloom: ${blooms.length} of the ${bloomKnown.length} recipes that record it use one (median ${oneDecimal(median(blooms))} g of water); the rest pour everything at once.`,
     `- The press starts at a median ${clock(median(pressStarts))} (${clock(Math.min(...pressStarts))}–${clock(Math.max(...pressStarts))}) and takes a median ${oneDecimal(median(pressTimes))} s (${range(pressTimes, ' s')}).`,
-    `- Bypass: ${bypass.length} recipes dilute with bypass water (median ${oneDecimal(median(bypass))} g).`,
+    `- Dilution: ${bypass.length + toppedUp} recipes dilute the concentrate with water: ${bypass.length} add a set amount (median ${oneDecimal(median(bypass))} g) and ${toppedUp} top up to a target drink weight. ${undiluted} serve it undiluted; the rest don’t say.`,
     `- Filters: ${paper} of ${recipes.length} use paper; ${rinsed} say the filter is rinsed or wetted; ${doubled} stack two filters; ${metal} add a metal filter.`,
     '',
-    'Recent winners in full:',
-    ...recentWinners.map(recipeLine),
+    'Recent winners in full, with the coffee they were given:',
+    ...recentWinners.map(winnerLine),
   ]
     .join('\n')
-    .replace(/(\d) (°C|µm|ppm|g|s)(?=[\s,.;:)]|$)/gm, '$1\u00a0$2');
+    .replace(/(\d) (°C|µm|ppm|g|s)(?=[\s,.;:)]|$)/gm, '$1 $2');
 }
 
 // ---------- The sections ----------
@@ -144,7 +165,7 @@ export const KNOWLEDGE: readonly KnowledgeSection[] = [
     summary: 'How to change a recipe and prove the change: the order of the levers, step sizes, tasting, blind duels, a new coffee on the day.',
     keywords: [' dial', 'adjust', 'tweak', 'improve', 'experiment', 'variable', 'consisten', 'repeatab', 'routine', 'session', 'practi', 'training', 'ضبط', 'تجرب', 'تحسين', 'تدريب'],
     body: `Split every problem into two questions before touching a setting:
-- Extraction: is the cup under-extracted (sour, salty, thin, short) or over-extracted (bitter, drying, hollow)? That is how much of the coffee dissolved. Fix it first, with grind, agitation, steep time and temperature.
+- Extraction: is the cup under-extracted (sour, salty, thin, short), over-extracted (bitter, drying), or uneven (sour and bitter at once, hollow)? That is how much of the coffee dissolved. Fix it first, with grind, agitation, steep time and temperature.
 - Strength: is it too strong or too weak? That is how much dissolved coffee is in the drink (TDS). Fix it last, with dose, brew water or bypass.
 
 The levers, strongest first in an AeroPress:
@@ -153,7 +174,7 @@ The levers, strongest first in an AeroPress:
 - Water temperature: hotter extracts more and faster. Read the temperature section before moving it.
 - Dose, brew water and bypass: they set strength and volume more than extraction.
 
-Steps a trained palate can pick up: 1–2 clicks on a hand grinder (grinder-specific), 2–3 °C, 15–20 s of steep, 0.5–1 g of coffee, 10–20 g of bypass, one stir more or less. Change one variable per test; two only when they push the same way on purpose (a finer grind with a shorter steep, to keep the time).
+Steps a trained palate can pick up: 1–2 clicks on a hand grinder (grinder-specific), 2–3 °C, 15–20 s of steep, 0.5–1 g of coffee, 10–20 g of bypass, one stir more or less. Change one variable per test; two only when they belong together and you say why (a finer grind with a shorter steep, to change the grind without changing the total time).
 
 Tasting a test:
 - Taste every cup hot, warm and near room temperature. A competition cup holds or improves as it cools; one that turns sour or thin as it cools loses heads-up.
@@ -176,14 +197,15 @@ A new coffee on the day (the organiser’s coffee often arrives the evening befo
 - Extraction yield (EY, %): how much of the dry coffee ended up dissolved. The app computes it as TDS % × drink weight (g) ÷ dose (g).
 - The SCA’s “golden cup” for filter coffee is 1.15–1.35 % TDS at 18–22 % extraction (about 55 g of coffee per litre). In 2023 UC Davis and the SCA published a new brewing control chart that maps flavours (sour, bitter, sweet, astringent, fruity and more) across strength and extraction, and found consumers split into groups with different favourite zones. There is no single ideal: judge the cup, and use the numbers to repeat it.
 - Under-extracted: sour (sharp rather than juicy), salty, thin, short, little sweetness. Very light roasts can also taste grassy or like raw peanuts.
-- Over-extracted: bitter, hollow, drying, woody, a harsh finish. True over-extraction is rarer than it seems: a drying, astringent cup is often uneven extraction (channelling, fines) rather than too much.
+- Over-extracted: bitter, drying, woody, a harsh finish. True over-extraction is rarer than it seems: a drying, astringent cup is often uneven extraction (channelling, fines) rather than too much.
+- Uneven: sour and bitter at once, with nothing in the middle (hollow). Part of the coffee over-extracted while part barely extracted.
 - In between: sweetness, balance and clarity. That is the target for a blind heat.
 - Strength is a separate question: a well-extracted cup can still be too strong (heavy, flavours blurred) or too weak (watery, short). Fix strength with bypass, dose or water, not with grind.
 - What raises extraction: a finer grind, hotter water, a longer steep, more agitation, rested (degassed) coffee. The opposite lowers it.
 
 Reading AeroPress numbers:
-- In an immersion brew the wet grounds keep back liquid as strong as the cup (roughly 1.5–2 g per gram of coffee), and the drink-weight formula leaves out what it holds, so the app’s EY reads lower than the true extraction.
-- Immersion formulas count it: EY ≈ TDS × brew water ÷ dose, or TDS × brew water ÷ (dose × (1 − TDS)), with TDS as a fraction and bypass left out. Measured on the concentrate, they can read about 3 points higher than the drink-weight formula for the same brew. Compare brews with the same formula, and AeroPress brews with each other, not with pour-over numbers.
+- In an immersion brew the wet grounds keep back liquid as strong as the cup (roughly 1.2–2 g per gram of coffee; recent winners pressed about 75 g of concentrate out of 100 g of water and 18 g of coffee). The drink-weight formula leaves out what they hold, so the app’s EY reads lower than the true extraction.
+- Immersion formulas count it: EY ≈ TDS × brew water ÷ dose, or TDS × brew water ÷ (dose × (1 − TDS)), with TDS as a fraction and bypass left out. The gap grows with concentration: about 2–3 points at 1:12–1:15, and about 4–7 points for an 18 g : 100 g concentrate, where an app EY of 13–15 % can be a normal 19–21 % extraction. Never call a concentrate under-extracted from the app’s EY alone. Compare brews with the same formula, and AeroPress brews with each other, not with pour-over numbers.
 - At full equilibrium, immersion extraction stays close to 21 % across brew ratios (UC Davis, 2021): a concentrate plus bypass is mainly a way to set strength, volume and serving temperature separately.
 - Bypass lowers TDS but doesn’t change how much was extracted.
 - Measure the same way every time (the same sample point and temperature) and trust a trend over several brews more than one reading.`,
@@ -207,9 +229,11 @@ What the AeroPress world does:
 - World podium recipes run from 75 to 96 °C, median about 85 °C. Winners since 2021: 2025 84 °C, 2024 96 °C, 2023 89 °C, 2022 92 °C, 2021 80 °C. Both cool and hot recipes win; what matters is that grind, steep, agitation and dose are built around the temperature for the coffee in hand.
 - The 2024 winner paired 96 °C with a coarse grind (about 870 µm). Tuomas Merikanto (2021 winner) found his 95 °C national recipe tasted sour and tannic on the very light competition roast, and won at 80 °C with a coarser grind and gentler stirring. Hotter is not always sweeter, and cooler is not always safer.
 
-Choosing a temperature for a coffee (tendencies, then taste):
-- Hotter (91–96 °C): light, dense, washed, high-grown coffees; coarse grinds or short steeps; a cup that stays sour, salty or short after going finer.
-- Cooler (80–88 °C): darker roasts (bitterness and roast notes rise with heat); naturals, anaerobic and co-fermented lots that turn boozy or harsh hot; a cup that dries the mouth.
+Choosing a temperature for a coffee:
+- Everyday brewing advice: light, dense, washed, high-grown coffees get hotter water (about 91–96 °C); darker roasts get cooler water (80–88 °C), because bitterness and roast notes rise with heat.
+- Competition practice is looser. WAC coffees are nearly all light, high-grown specialty lots, and winners brewed them anywhere from 80 to 96 °C: a washed Kenya at 89 °C (2023), a washed Ethiopia at 96 °C (2024), a washed Sidra at 84 °C (2025), a natural Bourbon at 92 °C (2022). The bands are a starting point, not an answer: pick a style (cooler with more contact, or hotter with less), build grind, steep and agitation around it, and let blind duels decide.
+- Naturals, anaerobic and co-fermented lots: many roasters brew them a few degrees cooler and more gently to keep ferment notes clean. A tendency only: the 2022 winner brewed a natural at 92 °C.
+- A cup that stays sour, salty or short after going finer: go hotter. A cup that dries the mouth: go gentler first (see Fixing a cup), then cooler.
 - Below 80 °C: only podium recipes from 2009–2015 went there (75–79 °C). Treat it as an experiment that needs a strong reason.
 - Steps of 2–3 °C. A jump of 5 °C or more is a change of style: rethink the grind and the time with it.
 - Always say why a temperature suits this coffee, and which grind, steep and dose go with it.
@@ -257,7 +281,7 @@ Heat in the brewer:
     id: 'ratio',
     title: 'Dose, ratio and bypass',
     summary: 'The dose cap, brewing a concentrate, bypass, and reaching the serving volume.',
-    keywords: [' ratio', ' dose', ' dosing', ' gram', 'bypass', 'dilut', 'concentrate', 'volume', ' ml ', '1:', 'نسبة', 'جرعة', 'تخفيف', 'بايباس', 'كمية'],
+    keywords: [' ratio', ' dose', ' dosing', ' gram', 'bypass', 'dilut', 'concentrate', 'volume', ' ml ', 'top up', 'نسبة', 'جرعة', 'تخفيف', 'بايباس', 'كمية'],
     body: `- Brew ratio = brew water ÷ coffee. Pour-over usually runs about 1:15–1:17. Many AeroPress champions brew a concentrate (about 1:5–1:10) and dilute it with bypass water.
 - Why a concentrate: a small brew is quick to steep and press, and bypass then sets strength, volume and serving temperature on its own. Baristas often add that a stronger slurry extracts less; in full immersion the effect is small (see Strength and extraction), so let taste decide.
 - Bypass changes strength, not extraction. Dial extraction with grind, time, agitation and temperature; set strength last with bypass.
@@ -265,8 +289,9 @@ Heat in the brewer:
 
 Competition limits:
 - The WAC has capped the dose at 18 g since 2021 (some 2024 national rulebooks say 20 g; check the current rules). Less is allowed.
-- Every world podium recipe since 2021 used 18 g. Winners from 2016 to 2019 used 29–35 g with coarse grinds and heavy bypass, which is no longer legal.
-- At least 150 ml has to be served. The wet grounds keep roughly 1.5–2 g of water per gram of coffee (about 27–36 g for 18 g), so plan the drink weight (brew water minus what the grounds keep, plus bypass) with a margin, and weigh it in practice.`,
+- Every world podium recipe since 2021 used 18 g. Winners from 2016 to 2019 used 30–35 g with coarse grinds (and, where recorded, 100–120 g of bypass), which is no longer legal.
+- At least 150 ml has to be served. The wet grounds keep roughly 1.2–2 g of water per gram of coffee, so plan the drink weight (brew water minus what the grounds keep, plus bypass) with a margin, and weigh it in practice.
+- Recent winners brewed about 100 g of water through 18 g of coffee, pressed out about 60–80 g of concentrate, and diluted it to about 150–165 g: a set amount of bypass, or topping up to a target weight.`,
     sources: WAC_RULES,
   },
   {
@@ -310,12 +335,12 @@ The routine:
     id: 'water',
     title: 'Water',
     summary: 'The SCA water targets, alkalinity and hardness, what champions brewed with, and practical water for the team.',
-    keywords: ['mineral', ' ppm', 'hardness', 'alkalin', 'buffer', 'bicarbonate', 'magnesium', 'calcium', 'third wave', 'aquacode', 'lotus', ' apax', 'perfect coffee water', 'reverse osmosis', ' ro ', 'distilled', 'tap water', 'bottled', 'water recipe', 'which water', 'what water', 'our water', 'معادن', 'عسر', 'قلوي', 'مياه', 'فلترة'],
+    keywords: ['mineral', ' ppm', 'hardness', 'alkalin', 'buffer', 'bicarbonate', 'magnesium', 'calcium', 'third wave', 'aquacode', 'lotus', ' apax', 'perfect coffee water', 'reverse osmosis', ' ro ', 'distilled', 'tap water', 'bottled', 'water recipe', 'which water', 'what water', 'our water', 'معادن', 'عسر', 'قلوي', 'مياه', 'ماء', 'فلترة'],
     body: `- Water is about 98 % of the cup, and its minerals change how it tastes. A new water means a new dial-in.
 - SCA water standard: calcium hardness 68 mg/L as CaCO₃ (17–85 acceptable), total alkalinity at or near 40 mg/L, TDS 150 mg/L (75–250), pH 7 (6.5–7.5), sodium at or near 10 mg/L, no chlorine, clean and odourless.
 - Alkalinity (the bicarbonate buffer) is the biggest taste lever. Too much neutralises acidity, and the cup goes flat and chalky; too little lets acidity turn sharp.
 - Magnesium and calcium: a 2014 computer model found magnesium binds flavour compounds more strongly than calcium, which gave rise to “magnesium for fruit, calcium for body”. A 2024 experiment found drinking-water levels of either barely changed how much acid was extracted; minerals may change how the cup tastes more than what it extracts. Choose water by blind tasting.
-- Pure RO or distilled water brews flat and hollow. Hard, high-alkalinity tap water mutes the cup and scales the kettle.
+- Pure RO or distilled water brews flat and empty. Hard, high-alkalinity tap water mutes the cup and scales the kettle.
 - Champions mostly brewed with soft, low-alkalinity water: 30 ppm Spa Blauw (2019), diluted Aquacode around 85–90 ppm (2024), Perfect Coffee Water (2022, 2023), Third Wave Water blends (2021), 125 ppm from an APAX Lab prototype (2025).
 - Competitors may bring their own water unless the host provides competition water. It must taste neutral, and the head judge can refuse it. Practise with the exact water you will compete with.
 - In practice: build from RO or distilled water plus a known mineral recipe (Third Wave Water, APAX or Lotus drops, or a measured magnesium, calcium and bicarbonate mix), so every brew, in Amman and at the venue, uses the same water. A TDS meter shows only the total; hardness and alkalinity drop tests show the balance.`,
@@ -330,7 +355,7 @@ The routine:
     id: 'beans',
     title: 'Varieties, origins and density',
     summary: 'What a coffee’s variety, origin, altitude and density suggest about its flavour and how it extracts.',
-    keywords: [' bean', 'variet', 'cultivar', 'origin', 'ethiopia', 'kenya', 'colombia', 'panama', 'costa rica', 'guatemala', 'brazil', 'rwanda', 'burundi', 'yemen', 'ecuador', ' peru', 'honduras', 'indonesia', 'geisha', 'gesha', 'sidra', 'bourbon', 'typica', 'caturra', 'catuai', 'pacamara', 'sl28', 'sl34', '74110', 'altitude', 'masl', 'density', ' dense', 'حبوب', 'صنف', 'سلالة', 'منشأ', 'اثيوب', 'إثيوب', 'كيني', 'كولومبي', 'جيشا', 'ارتفاع', 'كثافة'],
+    keywords: [' bean', 'variet', 'cultivar', ' origin ', ' origins', 'single origin', 'ethiopia', 'kenya', 'colombia', 'panama', 'costa rica', 'guatemala', 'brazil', 'rwanda', 'burundi', 'yemen', 'ecuador', ' peru', 'honduras', 'indonesia', 'geisha', 'gesha', 'sidra', 'bourbon', 'typica', 'caturra', 'catuai', 'pacamara', 'sl28', 'sl34', '74110', 'altitude', 'masl', 'density', ' dense', 'حبوب', 'صنف', 'سلالة', 'منشأ', 'اثيوب', 'كيني', 'كولومبي', 'جيشا', 'ارتفاع', 'كثافة'],
     body: `These are tendencies; the coffee in the cup decides.
 
 Varieties:
@@ -360,7 +385,7 @@ Altitude and density:
     id: 'process',
     title: 'Processing',
     summary: 'Washed, natural, honey, anaerobic and co-fermented coffees: how they taste and how to brew them.',
-    keywords: ['process', 'washed', 'natural', 'honey', 'anaerobic', 'carbonic', 'ferment', 'infused', 'thermal shock', 'yeast', 'hulled', 'pulped', 'decaf', 'معالجة', 'مغسول', 'مجفف', 'طبيعي', 'عسلي', 'تخمير', 'لاهوائي'],
+    keywords: ['processing', 'processed', ' washed', ' natural', 'honey', 'anaerobic', 'carbonic', 'ferment', 'infused', 'thermal shock', 'yeast', 'hulled', 'pulped', 'decaf', 'معالجة', 'مغسول', 'مجفف', 'ناتشورال', 'عسلي', 'تخمير', 'لاهوائي'],
     body: `- Washed: the fruit is removed before drying. Clean, bright, transparent; shows the variety and the place. Usually brewed for a full extraction (finer, hotter) to bring out its sweetness.
 - Natural (dry): dried inside the whole cherry. Fruit-forward, heavier body, winey, sometimes fermenty.
 - Honey and pulped natural: in between; sweetness and body.
@@ -373,7 +398,7 @@ Altitude and density:
     id: 'roast',
     title: 'Roast, rest and storage',
     summary: 'Roast level and development, resting after roasting, staling, storing and freezing.',
-    keywords: ['roast', ' rest', 'degas', 'fresh', 'stale', 'days off', 'freez', 'frozen', 'storage', ' store', 'valve', 'agtron', 'develop', 'baked', 'تحميص', 'محمص', 'راحة', 'طازج', 'قديم', 'تجميد', 'فريزر', 'تخزين'],
+    keywords: ['roast', 'resting', ' rested', 'rest time', 'rest period', 'rest days', 'let it rest', 'let them rest', 'degas', ' fresh', 'stale', 'days off', 'freez', 'frozen', 'storage', ' store', 'valve', 'agtron', 'underdevelop', 'baked', 'تحميص', 'محمص', 'راحة', 'يرتاح', 'ترتاح', 'طازج', 'قديم', 'تجميد', 'فريزر', 'تخزين'],
     body: `- Roast level: lighter roasts keep more acidity and origin character and usually need more energy to taste sweet (finer, hotter, longer). Darker roasts bring roast bitterness and body, which rise with water temperature: go cooler, coarser or shorter. (“Dark roasts extract more easily” rarely shows up in measured extraction; the reason to brew them cooler is taste.) Competition coffees are usually light filter roasts.
 - Development: an underdeveloped light roast tastes grassy, like raw peanuts, sour and drying even when brewed well; finer and hotter only partly helps. A baked roast tastes flat, bready or papery. Know which it is before blaming the recipe.
 - Rest: fresh coffee releases CO₂, which pushes water away and extracts unevenly (sharp, hollow cups). Rules of thumb: whole beans stay fresh for about 3 weeks (SCA); many light filter roasts taste best from about 1 to 3 weeks off roast; very light or dense coffees can need longer. With very fresh coffee, bloom longer and stir more. The data gives each coffee’s days off roast: always read it.
@@ -390,7 +415,7 @@ Altitude and density:
     id: 'sourcing',
     title: 'Sourcing and green coffee',
     summary: 'What makes coffee specialty, what to ask a roaster, and how to practise for an unknown competition coffee.',
-    keywords: [' sourc', ' buy', ' green', 'importer', ' farm', 'producer', 'harvest', ' crop', 'cup of excellence', ' grade', 'grading', 'defect', 'moisture', 'water activity', 'auction', ' cva', 'مصدر', 'توريد', 'أخضر', 'مزرعة', 'محصول', 'عيوب', 'شراء'],
+    keywords: [' sourc', ' buy', 'green coffee', 'green bean', 'importer', ' farm', 'producer', 'harvest', ' crop', 'cup of excellence', ' grade', 'grading', 'defect', 'moisture', 'water activity', 'auction', ' cva', 'مصدر', 'توريد', 'أخضر', 'مزرعة', 'محصول', 'عيوب', 'شراء'],
     body: `- Specialty grade (SCA): in a 350 g sample of green coffee, no category-1 defects and at most 5 full defects (smaller defects are counted in equivalents, such as 5 broken beans for 1 full defect). Moisture about 10–12 % (older texts say 9–13 %), and water activity below 0.70.
 - Scoring: the classic cupping form gave one score out of 100, with 80+ for specialty. Since 2024 the SCA’s Coffee Value Assessment keeps four parts apart: physical (defects, moisture, size), descriptive (what the coffee tastes like), affective (how much the taster likes it) and extrinsic (traceability, certifications, processing).
 - Freshness of the green coffee: new-crop coffee tastes vivid; past-crop coffee tastes papery, woody or flat. Ask for the harvest date.
@@ -405,7 +430,7 @@ Altitude and density:
     id: 'sensory',
     title: 'Tasting and judging',
     summary: 'How WAC judges decide, what wins blind, tasting as the cup cools, and calibrating the team’s judges.',
-    keywords: ['taste', 'tasting', ' judg', ' score', 'flavor', 'flavour', ' sweet', 'acidity', 'acidic', ' body', 'mouthfeel', 'clarity', ' finish', 'aftertaste', 'palate', 'calibrat', 'cupping', 'aroma', 'تذوق', 'طعم', 'حكم', 'تحكيم', 'حموضة', 'حلاوة', 'قوام', 'صفاء', 'نكهة'],
+    keywords: ['taste', 'tasting', ' judg', ' score', 'flavor', 'flavour', ' sweet', 'acidity', 'acidic', ' body', 'mouthfeel', 'clarity', ' finish', 'aftertaste', 'palate', 'calibrat', 'cupping', 'aroma', 'تذوق', 'طعم', 'حكام', 'تحكيم', ' الحكم ', 'حموضة', 'حلاوة', 'قوام', 'صفاء', 'نكهة'],
     body: `- At the WAC, three judges taste a heat’s three cups blind. Each decides privately which is “the cup I would most like to drink all of”, and all three point at once on a count of three. Two votes win; if all three point at different cups, the head judge tastes and decides. There is no score sheet.
 - What wins: sweetness, balance, clarity (distinct flavours, not muddled), pleasant acidity, a clean and lasting finish, enough body to feel good. Intensity alone rarely wins; a defect (sourness, bitterness, dryness, ferment) usually loses.
 - Temperature: judges keep tasting as the cup cools. As it cools, bitterness and roast notes fade and sourness reads more strongly; below about 44 °C fruit and other non-roast flavours come through more clearly. That is why cuppers judge sweetness and cleanliness in the cooled cup, and why a sour or thin cup gets worse as it cools. A cup must taste good from hot to warm.

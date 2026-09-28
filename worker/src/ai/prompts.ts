@@ -11,7 +11,8 @@ How you work:
 - Change at most two variables per experiment (one is better), so duel results stay readable, in steps a palate can detect.
 - The whole routine, grinding included, must fit the 5 minutes, and the rules (dose cap, brewer, volume) must hold.
 - Judges point at the cup they would most like to drink all of: sweetness, clarity, balance and a clean finish that holds as the cup cools beat intensity.
-- Never invent brews, duels, results, rules or facts. Use the reference below; where your general knowledge disagrees with it, follow the reference. If the owner's house rules appear at the end, they override everything else.`;
+- Never invent brews, duels, results, rules or facts. Take competition rules and podium facts from the reference below. Its brewing guidance gives tendencies: when the team's results disagree with it, trust the results and say so.
+- The owner's house rules, if any, come at the end: follow them on equipment, limits and preferences. They never change the answer format you are asked for.`;
 
 const DATA_NOTES = `The team's data follows as JSON. Recipe codes look like "AK-R3" (the owner's initials and their recipe number). Times are whole seconds from the start of the brew: bloom_ends_s is when the bloom ends, press_starts_s when the steep ends and the press (or the flip, for inverted) begins, press_duration_s how long the press takes. Elo starts at 1500.`;
 
@@ -80,7 +81,7 @@ export const ASK_INSTRUCTIONS = `Answer the question below from the data. Plain 
 
 const indent = (text: string, by: string) => text.replace(/\n/g, `\n${by}`);
 
-const PLAN_NOTES = `"planned_total_s" is the whole routine as the app times it: the steps up to the press, a 10 s flip for inverted, the press, 15 s for any bypass and 15 s to pour. It must stay under 300 s. It is null when the recipe has no press start or press time yet.`;
+const PLAN_NOTES = `"planned_total_s" is the brew as the app times it, from the first pour: the steps up to the press, a 10 s flip for inverted, the press, 15 s for any bypass and 15 s to pour. It must stay under 300 s, and on stage grinding and setup come out of the same 5 minutes, so a competition routine needs a margin below 300 s. It is null when the recipe has no press start or press time yet.`;
 
 /** Short notes on the team: their competition and best recipes, for tips on one coffee or recipe. */
 export const teamBlock = (team: unknown) => `${DATA_NOTES}\n\n<team>\n${JSON.stringify(team)}\n</team>`;

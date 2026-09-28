@@ -3,6 +3,7 @@ import { type Criterion, type DuelRead, JUDGING_CRITERIA } from '../../../shared
 import { duelReadOutput } from '../../../shared/schemas';
 import { type DuelDbRow, winnerSide } from '../lib/duels';
 import { listRecipes, recipeBrewAverages } from '../lib/recipes';
+import { clipToSentence } from '../lib/text';
 import { type AiScope, askJson, askText } from './client';
 import { recipeForCoach } from './context';
 import { toExperiment } from './experiments';
@@ -63,9 +64,12 @@ export async function writeBrewRead(scope: AiScope, brewId: string): Promise<voi
     recipe_average_before: average && average.count ? Object.fromEntries(Object.entries(average).map(([k, v]) => [k, r2(v)])) : null,
     last_5_before: history.results.map(strip),
   };
-  const read = (await askText(scope, 'brewRead', BREW_READ_SYSTEM, brewReadUser(data))).slice(0, 600);
+  const read = clipToSentence(await askText(scope, 'brewRead', BREW_READ_SYSTEM, brewReadUser(data)), BREW_READ_MAX);
   if (read) await db.prepare('UPDATE brews SET ai_read = ? WHERE id = ? AND team_id = ?').bind(read, brewId, team).run();
 }
+
+/** Longest brew read kept (the card under a brew shows two sentences). */
+const BREW_READ_MAX = 600;
 
 /**
  * What the duel result suggests and one next test. Saved on the duel as JSON, but only while

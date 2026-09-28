@@ -314,6 +314,17 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
     - Facts were checked by research agents in September 2026, from search summaries (pages
       couldn't be opened from here). What sources contest is written as a tendency.
     - The podium section is computed from `CHAMPION_RECIPES`, so it can't drift from the library.
+      - It lists recent winners with their coffee (from the notes) and the full published method,
+        because 2022–2024 top up to a target weight: their `bypass_g` is empty.
+      - Stats count set bypass amounts and top-ups separately; the filter counts are hand-checked
+        in the unit test.
+    - Numbers the written sections quote from the library (temperature range and median, the
+      winners' coffees and temperatures, the 2016–2019 doses) are checked against it by a test.
+    - Temperature bands are everyday advice. Competition practice is looser (washed coffees won
+      at 84–96 °C), and the section says so with those counter-examples.
+    - "Hollow" means uneven extraction (sour and bitter at once) everywhere.
+    - The app's EY reads 4–7 points low on an 18 g : 100 g concentrate, and the extraction
+      section warns the coach not to call that under-extracted.
     - Rules as found: 5 minutes including grinding, an 18 g dose cap since 2021 (some 2024
       national rulebooks say 20 g), Original or Clear only, the Flow Control cap from 2025, at
       least 150 ml served.
@@ -321,20 +332,33 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
       in Mexico City.
   - `worker/src/ai/knowledge.ts` decides what each call is taught:
     - `KIND_SECTIONS` lists each kind's sections. Quick log gets none.
-    - Ask gets `askSections(question, about)`: the basics, plus sections whose keywords appear
-      in the question. Keywords are English and Arabic; a leading space means "word start". It
-      takes at most 8 sections, and a question that names nothing gets temperature, grind and
-      AeroPress.
-    - One call carries up to about 5k tokens of reference; a unit test caps it.
+    - Ask gets `askSections(question, about)`, up to 8 sections, in this priority: the sections
+      the question names (the most keyword hits first), then what its bean or recipe needs, then
+      the basics. A question that names nothing gets temperature, grind and AeroPress too. The
+      chosen sections go to the coach in the reference's order.
+    - Keywords are English and Arabic. A leading or trailing space marks a word boundary.
+      - Matching runs on `fold()`ed text: lower case, no accents or Arabic diacritics, one form
+        of each Arabic letter, no apostrophes (so "won't" isn't " won ").
+      - A unit test lists the look-alikes that must not match: "the rest of", "green apple",
+        "Original", "1:30", طبيعية ("normal"), تحكم ("control").
+    - One call carries up to about 6k tokens of reference; a unit test caps it.
   - `client.ts` builds every system prompt through `withReference`: the call's own prompt, then
     `<reference>`, then `<house_rules>` last, so they win. No call site can skip it.
-  - `COACH_SYSTEM`: diagnose first, give every number a reason (temperature above all), cite the
-    evidence, follow the reference over general knowledge, respect the house rules.
+  - `COACH_SYSTEM`: diagnose first and give every number a reason (temperature above all).
+    - It cites the evidence and takes competition rules and podium facts from the reference.
+    - The reference's brewing guidance counts as tendencies, and the team's results outrank it.
+    - House rules cover equipment, limits and preferences, and never the answer format.
+  - `PLAN_NOTES`: `planned_total_s` is the brew only. On stage, grinding and setup come out of the
+    same 5 minutes, so a competition plan needs a margin.
+  - The brew read is cut at a sentence end (`clipToSentence`, `worker/src/lib/text.ts`, 600
+    characters).
   - House rules: `teams.coach_rules` (migration 0008, `COACH_RULES_MAX` 1500), set in Settings.
     - The PUT keeps them when the field is left out (older phones) and clears them when it's
       blank.
     - `monthSpend` reads them with the budget, so there's no extra query. They go with every call
       except quick log, and into the backup.
+    - Saved tips and reads aren't marked stale when the rules change. The Settings hint and the
+      README say so (tap Update tips).
   - "What the coach knows" (`/coach/knowledge`, a lazy chunk, linked at the top of the Coach tab)
     shows the house rules and every section with its sources.
 

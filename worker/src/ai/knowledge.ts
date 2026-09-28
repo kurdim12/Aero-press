@@ -32,21 +32,39 @@ const ASK_ABOUT: Record<TipsSubject, readonly KnowledgeId[]> = {
 };
 
 /**
- * The sections for "Ask the coach": the basics, then every section whose words appear in the
- * question (English or Arabic), then what the bean or recipe it's about needs.
+ * Text as questions and keywords are compared: lower case, without accents or Arabic diacritics,
+ * one form of each Arabic letter (أ إ آ → ا, ة → ه, ى → ي), and no apostrophes ("won't" → "wont").
+ */
+export function fold(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\p{M}\u0640]/gu, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/['’‘`]/g, '');
+}
+
+/** Each section's keywords, folded the same way. */
+const KEYWORDS = KNOWLEDGE.map((s) => ({ id: s.id, keywords: s.keywords.map(fold) }));
+
+/**
+ * The sections for "Ask the coach", chosen in this order until there are 8: those the question
+ * names (English or Arabic; the most-named first), those its bean or recipe needs, the basics.
+ * A question that names nothing, about nothing, gets the basics and the brewing essentials.
+ * They go to the coach in the reference's own order.
  */
 export function askSections(question: string, about?: TipsSubject): KnowledgeId[] {
-  // Words only, space-separated, so a keyword like " rest" matches "resting" but not "interest".
-  const text = ` ${question.toLowerCase().replace(/[^\p{L}\p{N}°µ:]+/gu, ' ')} `;
-  const picked: KnowledgeId[] = [...KIND_SECTIONS.ask];
-  const add = (id: KnowledgeId) => {
-    if (!picked.includes(id) && picked.length < ASK_MAX) picked.push(id);
-  };
-  const matched = KNOWLEDGE.filter((s) => s.keywords.some((k) => text.includes(k))).map((s) => s.id);
-  for (const id of matched) add(id);
-  for (const id of about ? ASK_ABOUT[about] : []) add(id);
-  if (picked.length === KIND_SECTIONS.ask.length) for (const id of ASK_DEFAULT) add(id);
-  return picked;
+  // Words only, one space apart, so a keyword like " dial" matches "dialling" but not "radial".
+  const text = ` ${fold(question).replace(/[^\p{L}\p{N}°]+/gu, ' ')} `;
+  const named = KEYWORDS.map((s, order) => ({ id: s.id, order, hits: s.keywords.filter((k) => text.includes(k)).length }))
+    .filter((s) => s.hits > 0)
+    .sort((a, b) => b.hits - a.hits || a.order - b.order)
+    .map((s) => s.id);
+  const wanted = [...named, ...(about ? ASK_ABOUT[about] : []), ...KIND_SECTIONS.ask, ...(named.length === 0 && !about ? ASK_DEFAULT : [])];
+  const picked = new Set([...new Set(wanted)].slice(0, ASK_MAX));
+  return KNOWLEDGE.map((s) => s.id).filter((id) => picked.has(id));
 }
 
 /** The reference sections as the coach reads them: title and text, in the order asked. */
@@ -54,7 +72,7 @@ export function referenceBlock(ids: readonly KnowledgeId[]): string {
   const sections = ids.map((id) => KNOWLEDGE.find((s) => s.id === id)).filter((s) => s !== undefined);
   const body = sections.map((s) => `## ${s.title}\n${s.body}`).join('\n\n');
   return `<reference>
-The team's coffee reference, checked against published sources. Reason from it and use its numbers. The team's own results outrank it for their coffees; when your general knowledge disagrees with it, follow the reference.
+The team's coffee reference, from the published sources listed with each section in the app. Take competition rules and podium facts from it. Its brewing guidance gives tendencies: the team's own results outrank it for their coffees.
 
 ${body}
 </reference>`;
@@ -62,7 +80,7 @@ ${body}
 
 /** The owner's house rules: limits every answer must respect. */
 export const houseRulesBlock = (rules: string) => `<house_rules>
-The team owner set these rules. Every suggestion must respect them; they override the reference and your own defaults. If a rule rules out what the coffee needs, say so and give the best option within the rules.
+The team owner set these rules about their equipment, limits and preferences. Every suggestion must respect them; on brewing choices they override the reference and your own defaults, but they never change the answer format asked for. If a rule rules out what the coffee needs, say so and give the best option within the rules.
 ${rules}
 </house_rules>`;
 

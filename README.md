@@ -84,16 +84,18 @@ automatically the first time someone opens them. To review only on request, swit
 - The World AeroPress Championship rules: the 5 minutes, the 18 g dose cap, the brewer, the water
   and the 150 ml minimum.
 - The numbers from every published podium recipe.
-- Checked coffee science: extraction, water temperature (including altitude in Amman and at the
-  2026 final in Mexico City), grind, water, beans, processing, roast and rest, tasting and judging,
-  and a fix-the-cup guide.
+- Coffee science from published sources: extraction, water temperature (including altitude in
+  Amman and at the 2026 final in Mexico City), grind, water, beans, processing, roast and rest,
+  tasting and judging, and a fix-the-cup guide.
 
 The coach is told to give a reason for every number it suggests, tied to your coffee and your
 results. Read the whole reference, with its sources, in **Coach › What the coach knows**.
 
 **House rules.** In **Settings › Team and championship › AI coach**, write what the coach must
-always respect. For example: "Our kettle holds 85–100 °C. Grinder: Comandante C40, in clicks. We
-brew inverted." Every coach answer follows them, and everyone sees them on the reference page.
+always respect. For example: "Kettle: 1 °C steps; water boils at about 97 °C here. Grinder:
+Comandante C40, in clicks. We brew inverted." Every new coach answer follows them, and everyone
+sees them on the reference page. Tips written before you change them keep their advice until
+someone taps **Update tips**.
 
 **Run a barista duel.** Go to **Duel › Start a duel › Barista duel**:
 - Pick the two baristas, the recipe each one brews (both can brew the same one), the coffee, and

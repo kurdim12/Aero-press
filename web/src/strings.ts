@@ -428,8 +428,9 @@ export const strings = {
     anthropicModels: 'The coach uses Claude Sonnet 5 and Haiku 4.5 through your Anthropic key. Add an OpenRouter key in Cloudflare to choose other models here.',
     noKeyModels: 'Add an OpenRouter API key in Cloudflare to choose the coach’s models here (the README says how).',
     houseRules: 'House rules for the coach',
-    houseRulesPlaceholder: 'e.g. Our kettle holds 85–100 °C in 1 °C steps. Grinder: Comandante C40, in clicks. Water: Third Wave Water Classic. We brew inverted.',
-    houseRulesHint: 'The coach follows these in every answer: your equipment and its limits, your water, anything it must never suggest.',
+    houseRulesPlaceholder: 'e.g. Kettle: 1 °C steps; water boils at about 97 °C here. Grinder: Comandante C40, in clicks. Water: Third Wave Water Classic. We brew inverted.',
+    houseRulesHint:
+      'Your equipment and its limits, your water, anything the coach must never suggest. Every new answer follows them; tips written before a change keep their advice until someone taps Update tips.',
   },
 
   knowledge: {
@@ -437,7 +438,7 @@ export const strings = {
     row: 'What the coach knows',
     rowSub: 'The reference behind every answer, with its sources',
     intro:
-      'Every coach answer starts from this reference: the World AeroPress Championship rules, the podium recipes, and coffee science checked against published sources (September 2026). Each answer gets the sections that fit the question, and the team’s own results come first.',
+      'Every coach answer starts from this reference: the World AeroPress Championship rules, the podium recipes, and coffee science, each section with the published sources it comes from (gathered September 2026). Each answer gets the sections that fit the question, and the team’s own results come first.',
     houseRules: 'House rules',
     houseRulesNone: 'No house rules yet. The owner can add the team’s equipment and limits, and the coach will follow them.',
     houseRulesAdd: 'Add house rules',
