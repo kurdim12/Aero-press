@@ -1,5 +1,13 @@
 import { queryOptions, type QueryClient } from '@tanstack/react-query';
-import type { BeanRow, BeansResponse, DuelView, DuelsResponse, RecipeDetailResponse, RecipesResponse } from '../../shared/types';
+import type {
+  BaristaStandingsResponse,
+  BeanRow,
+  BeansResponse,
+  DuelView,
+  DuelsResponse,
+  RecipeDetailResponse,
+  RecipesResponse,
+} from '../../shared/types';
 import { api } from './api';
 
 export type RecipeScope = 'all' | 'mine';
@@ -36,6 +44,13 @@ export const recipeQuery = (id: string) =>
 export const duelsQuery = queryOptions({
   queryKey: ['duels'],
   queryFn: () => api<DuelsResponse>('GET', '/api/duels'),
+});
+
+/** The baristas' ranking: read when the Duel tab opens, refreshed after a reveal (not polled). */
+export const baristaStandingsQuery = queryOptions({
+  queryKey: ['barista-standings'],
+  queryFn: () => api<BaristaStandingsResponse>('GET', '/api/duels/standings'),
+  staleTime: 60_000,
 });
 
 export const duelQuery = (id: string) =>

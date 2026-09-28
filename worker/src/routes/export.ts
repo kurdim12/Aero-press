@@ -27,6 +27,7 @@ const BY_ID: Partial<Record<ExportPart, string>> = {
 const BY_DUEL: Partial<Record<ExportPart, string>> = {
   duel_judges: 'duel_judges',
   duel_votes: 'duel_votes',
+  duel_scores: 'duel_scores',
 };
 
 /**

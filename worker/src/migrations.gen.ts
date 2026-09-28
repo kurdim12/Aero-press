@@ -86,5 +86,14 @@ export const MIGRATIONS: Migration[] = [
     "queries": [
       "-- Coach explanations the team keeps: two recipes compared (ours or World champions'), and a\n-- champion recipe broken down. The latest one per subject, written once and updated on request.\nCREATE TABLE ai_reads (\n  team_id TEXT NOT NULL REFERENCES teams (id),\n  id TEXT NOT NULL,                             -- 'compare:<ref>|<ref>' (refs sorted) or 'champion:<id>'\n  kind TEXT NOT NULL,                           -- 'compare' or 'champion'\n  result_json TEXT,                             -- NULL until the first one is written\n  result_at INTEGER,\n  member_id TEXT,                               -- who asked for the latest one\n  claim TEXT,                                   -- 'pending:<ms>' while a phone is writing it\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (team_id, id)\n);\n"
     ]
+  },
+  {
+    "name": "0007_barista_duels.sql",
+    "queries": [
+      "ALTER TABLE duels ADD COLUMN barista_x_id TEXT REFERENCES members (id)",
+      "ALTER TABLE duels ADD COLUMN barista_y_id TEXT REFERENCES members (id)",
+      "CREATE TABLE duel_scores (\n  duel_id TEXT NOT NULL REFERENCES duels (id) ON DELETE CASCADE,\n  judge_member_id TEXT NOT NULL REFERENCES members (id),\n  cup TEXT NOT NULL CHECK (cup IN ('x', 'y')),\n  sweetness REAL NOT NULL,\n  acidity REAL NOT NULL,\n  body REAL NOT NULL,\n  clarity REAL NOT NULL,\n  finish REAL NOT NULL,\n  overall REAL NOT NULL,\n  PRIMARY KEY (duel_id, judge_member_id, cup)\n)",
+      "CREATE INDEX idx_duel_scores_judge ON duel_scores (judge_member_id)"
+    ]
   }
 ];

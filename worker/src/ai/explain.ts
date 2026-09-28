@@ -267,12 +267,12 @@ function sideOf(db: D1Database, teamId: string, ref: CompareRef, recipes: Recipe
   };
 }
 
-/** How the two team recipes did against each other in revealed duels. */
+/** How the two team recipes did against each other in revealed recipe duels. */
 async function headToHead(db: D1Database, teamId: string, first: string, second: string) {
   const { results } = await db
     .prepare(
       `SELECT winner_recipe_id AS winner, COUNT(*) AS n FROM duels
-        WHERE team_id = ? AND status = 'revealed'
+        WHERE team_id = ? AND status = 'revealed' AND barista_x_id IS NULL
           AND ((recipe_x_id = ? AND recipe_y_id = ?) OR (recipe_x_id = ? AND recipe_y_id = ?))
         GROUP BY winner_recipe_id`,
     )

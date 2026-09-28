@@ -1,20 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'wouter';
-import type { DuelView, RecipeRow } from '../../../shared/types';
+import type { BaristaStanding, DuelView, RecipeRow } from '../../../shared/types';
 import { errorMessage } from '../api';
 import { FormError } from '../components/Fields';
 import { TopBar } from '../components/TopBar';
-import { formatDate } from '../format';
-import { duelsQuery, recipesQuery } from '../queries';
+import { formatDate, formatNumber } from '../format';
+import { baristaStandingsQuery, duelsQuery, recipesQuery } from '../queries';
 import { strings } from '../strings';
 
 const d = strings.duel;
 const r = strings.recipes;
 
-/** /duel: running duels, the leaderboard and recent results. Refreshes while open so judges see new duels. */
+/**
+ * /duel: running duels, the rankings (baristas and recipes) and recent results. The list refreshes
+ * while open so judges see new duels; the rankings are read once.
+ */
 export function DuelsScreen() {
   const duels = useQuery({ ...duelsQuery, refetchInterval: 4000 });
   const recipes = useQuery(recipesQuery('all', null));
+  const standings = useQuery(baristaStandingsQuery);
   const active = duels.data?.active ?? [];
   const recent = duels.data?.recent ?? [];
 
@@ -43,6 +47,7 @@ export function DuelsScreen() {
           </Link>
         </div>
 
+        <BaristaBoard standings={standings.data?.baristas} />
         <Leaderboard recipes={recipes.data?.recipes ?? []} />
 
         <section className="section">
@@ -66,16 +71,25 @@ export function DuelsScreen() {
   );
 }
 
+const matchup = (duel: DuelView) => {
+  const [a, b] = duel.baristas ?? [];
+  return a && b ? d.versus(a.name, b.name) : null;
+};
+
 function ActiveRow({ duel }: { duel: DuelView }) {
   const judgeTurn = duel.you.is_judge && duel.status === 'judging' && !duel.you.vote;
   const title = judgeTurn
     ? d.judgeNow
     : duel.you.is_creator
-      ? d.youPour
-      : duel.you.is_judge && duel.status === 'pouring'
-        ? d.waitingForCups
-        : d.inProgress;
-  const sub = [duel.bean ? d.on(duel.bean.name) : null, d.judgesLine(duel.judges.map((j) => j.name).join(', '))]
+      ? duel.kind === 'baristas'
+        ? d.youHost
+        : d.youPour
+      : duel.you.is_barista
+        ? d.youCompete
+        : duel.you.is_judge && duel.status === 'pouring'
+          ? d.waitingForCups
+          : d.inProgress;
+  const sub = [matchup(duel), duel.bean ? d.on(duel.bean.name) : null, d.judgesLine(duel.judges.map((j) => j.name).join(', '))]
     .filter(Boolean)
     .join(' · ');
   return (
@@ -95,8 +109,9 @@ function ActiveRow({ duel }: { duel: DuelView }) {
 }
 
 function ResultRow({ duel }: { duel: DuelView }) {
-  const x = duel.x?.display_code ?? d.voteX;
-  const y = duel.y?.display_code ?? d.voteY;
+  // A barista duel is between people; a recipe duel between recipes.
+  const x = duel.x_barista?.name ?? duel.x?.display_code ?? d.voteX;
+  const y = duel.y_barista?.name ?? duel.y?.display_code ?? d.voteY;
   let title: string = d.cancelled;
   let score = '';
   if (duel.status === 'revealed' && duel.result) {
@@ -104,7 +119,13 @@ function ResultRow({ duel }: { duel: DuelView }) {
     title = winner === null ? d.drew(x, y) : winner === 'x' ? d.beat(x, y) : d.beat(y, x);
     score = winner === 'y' ? d.score(y_votes, x_votes) : d.score(x_votes, y_votes);
   }
-  const sub = [formatDate(duel.revealed_at ?? duel.created_at), duel.bean?.name].filter(Boolean).join(' · ');
+  const sub = [
+    formatDate(duel.revealed_at ?? duel.created_at),
+    duel.kind === 'baristas' ? (duel.status === 'revealed' ? d.kinds.baristas : matchup(duel)) : null,
+    duel.bean?.name,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <li>
       <Link href={`/duel/${duel.id}`} className="row">
@@ -175,6 +196,38 @@ function Leaderboard({ recipes }: { recipes: RecipeRow[] }) {
             ))}
           </ul>
         </>
+      )}
+    </section>
+  );
+}
+
+/** The baristas ranked by their barista duels: Elo, record and the judges' average overall score. */
+function BaristaBoard({ standings }: { standings: BaristaStanding[] | undefined }) {
+  if (!standings) return null;
+  return (
+    <section className="section">
+      <span className="eyebrow">{d.baristas}</span>
+      {standings.length === 0 ? (
+        <p className="muted">{d.noBaristaDuels}</p>
+      ) : (
+        <ul className="rows">
+          {standings.map((b, i) => (
+            <li key={b.id}>
+              <div className="row">
+                <span className="rank condensed">{r.rank(i + 1)}</span>
+                <span className="avatar small">{b.initials}</span>
+                <span className="row-main">
+                  <span className="row-title">{b.name}</span>
+                  <span className="row-sub">{d.baristaSub(r.record(b), b.avg_overall === null ? null : formatNumber(b.avg_overall, 1))}</span>
+                </span>
+                <span className="stat-cell">
+                  <span className={`stat-num condensed${i === 0 ? ' gold' : ''}`}>{b.elo}</span>
+                  <span className="stat-label">{r.elo}</span>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

@@ -90,12 +90,15 @@ function toRecipeRow(r: RecipeDbRow, standing: Standing): RecipeRow {
   };
 }
 
-/** Every revealed duel of the team, for Elo replay. */
+/**
+ * Every revealed recipe duel of the team, for Elo replay. Barista duels rank the baristas, not
+ * the recipes: two people brewing makes it a contest of technique as much as of recipes.
+ */
 export async function loadRevealedDuels(db: D1Database, teamId: string): Promise<EloDuel[]> {
   const { results } = await db
     .prepare(
       `SELECT id, recipe_x_id, recipe_y_id, winner_recipe_id, revealed_at, bean_id
-         FROM duels WHERE team_id = ? AND status = 'revealed' AND revealed_at IS NOT NULL`,
+         FROM duels WHERE team_id = ? AND status = 'revealed' AND revealed_at IS NOT NULL AND barista_x_id IS NULL`,
     )
     .bind(teamId)
     .all<EloDuel>();
@@ -124,8 +127,8 @@ export async function listRecipes(
   }
   if (opts.beanId) {
     where.push(`(r.bean_id = ? OR r.id IN (
-      SELECT recipe_x_id FROM duels WHERE team_id = ? AND bean_id = ? AND status = 'revealed'
-      UNION SELECT recipe_y_id FROM duels WHERE team_id = ? AND bean_id = ? AND status = 'revealed'))`);
+      SELECT recipe_x_id FROM duels WHERE team_id = ? AND bean_id = ? AND status = 'revealed' AND barista_x_id IS NULL
+      UNION SELECT recipe_y_id FROM duels WHERE team_id = ? AND bean_id = ? AND status = 'revealed' AND barista_x_id IS NULL))`);
     params.push(opts.beanId, teamId, opts.beanId, teamId, opts.beanId);
   }
   const [{ results }, duels] = await Promise.all([

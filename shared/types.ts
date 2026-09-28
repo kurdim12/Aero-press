@@ -238,6 +238,18 @@ export const DUEL_CHOICES = ['x', 'y', 'tie'] as const;
 export type DuelChoice = (typeof DUEL_CHOICES)[number];
 export type DuelStatus = 'setup' | 'pouring' | 'judging' | 'revealed' | 'cancelled';
 
+/**
+ * Recipe duels test two recipes (one person pours both cups) and rank recipes. Barista duels are
+ * two teammates, each brewing their own recipe, and rank the baristas.
+ */
+export const DUEL_KINDS = ['recipes', 'baristas'] as const;
+export type DuelKind = (typeof DUEL_KINDS)[number];
+
+/** What judges score on each cup: the same 1–10 tasting scores the brew log uses. */
+export const JUDGING_CRITERIA = ['sweetness', 'acidity', 'body', 'clarity', 'finish', 'overall'] as const;
+export type Criterion = (typeof JUDGING_CRITERIA)[number];
+export type CupScores = Record<Criterion, number>;
+
 /** A recipe in a duel. Judges and onlookers only get these after the reveal. */
 export interface DuelRecipe {
   id: string;
@@ -255,6 +267,8 @@ export interface DuelJudge extends DuelPerson {
   voted: boolean;
   /** How they voted: only after the reveal. */
   choice: DuelChoice | null;
+  /** Their scores for each cup: only after the reveal (null for duels judged before scores existed). */
+  scores: { x: CupScores; y: CupScores } | null;
 }
 
 export interface DuelResult {
@@ -263,14 +277,18 @@ export interface DuelResult {
   ties: number;
   /** null on a draw. */
   winner: 'x' | 'y' | null;
+  /** The judges' average score per criterion for each cup, when they scored. */
+  scores: { x: CupScores; y: CupScores } | null;
 }
 
 /**
- * One duel as the asking member may see it. Before the reveal only the creator, who pours,
- * gets the recipes behind X and Y; judges and onlookers get null. The API enforces this.
+ * One duel as the asking member may see it. Before the reveal only the creator (who pours, or in a
+ * barista duel hosts and places the cups) learns what is behind X and Y; judges, competitors and
+ * onlookers get null. The API enforces this.
  */
 export interface DuelView {
   id: string;
+  kind: DuelKind;
   status: DuelStatus;
   bean: { id: string; name: string } | null;
   created_by: DuelPerson | null;
@@ -278,8 +296,13 @@ export interface DuelView {
   revealed_at: number | null;
   judges: DuelJudge[];
   votes_in: number;
+  /** Barista duels: the two competitors, in name order (not cup order). */
+  baristas: DuelPerson[] | null;
   x: DuelRecipe | null;
   y: DuelRecipe | null;
+  /** Barista duels: who brewed cup X and cup Y, on the same terms as the recipes. */
+  x_barista: DuelPerson | null;
+  y_barista: DuelPerson | null;
   result: DuelResult | null;
   rematch_of: string | null;
   /** The rematch started from this duel, so every phone can follow it. */
@@ -293,6 +316,10 @@ export interface DuelView {
     vote: DuelChoice | null;
     /** Creator or owner: can call the cups ready, reveal early, cancel, rematch. */
     can_manage: boolean;
+    /** Barista duels: you're one of the two competitors. */
+    is_barista: boolean;
+    /** The recipe you brew in this barista duel (it doesn't say which cup it goes in). */
+    my_recipe: DuelRecipe | null;
   };
 }
 
@@ -301,6 +328,21 @@ export interface DuelsResponse {
   active: DuelView[];
   /** Revealed or cancelled, newest first. */
   recent: DuelView[];
+}
+
+/** A barista's standing from revealed barista duels. */
+export interface BaristaStanding extends DuelPerson {
+  elo: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  duels: number;
+  /** The average overall score judges gave this barista's cups. */
+  avg_overall: number | null;
+}
+
+export interface BaristaStandingsResponse {
+  baristas: BaristaStanding[];
 }
 
 // ---------- AI coach ----------
@@ -629,6 +671,7 @@ export const EXPORT_PARTS = [
   'duels',
   'duel_judges',
   'duel_votes',
+  'duel_scores',
   'readiness_reports',
   'ai_tips',
   'ai_reads',

@@ -1799,6 +1799,71 @@ dl.kv-list.section {
   border-radius: 20px;
 }
 
+.duel-matchup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.cup-barista {
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.score-sheet {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  text-align: start;
+}
+
+.score-sheet-cup {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.btn.vote-btn:disabled {
+  opacity: 0.45;
+}
+
+.score-table {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-table th,
+.score-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: end;
+}
+
+.score-table th[scope='row'] {
+  text-align: start;
+  font-weight: 600;
+}
+
+.score-table td.higher {
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.score-table tr.total th,
+.score-table tr.total td {
+  border-bottom: 0;
+  font-weight: 800;
+}
+
 .result-title {
   margin: 0;
   font-size: 44px;

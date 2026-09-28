@@ -330,25 +330,69 @@ export type BrewInput = z.input<typeof brewInput>;
 
 // ---------- Duels ----------
 
-/** Blind judging needs someone to pour, so 1 to 3 judges who aren't the creator. */
+/** Blind judging needs someone to pour (or host), so 1 to 3 judges who aren't the creator. */
 export const DUEL_MAX_JUDGES = 3;
 
-export const duelInput = z
+const judgeIds = z
+  .array(id, { error: 'Pick the judges.' })
+  .min(1, 'Pick at least one judge.')
+  .max(DUEL_MAX_JUDGES, `Pick up to ${DUEL_MAX_JUDGES} judges.`);
+
+/** Two recipes, one person pouring both cups. */
+const recipeDuelInput = z
   .object({
+    kind: z.literal('recipes'),
     recipe_a_id: id,
     recipe_b_id: id,
     bean_id: id.nullable().optional(),
-    judge_ids: z
-      .array(id, { error: 'Pick the judges.' })
-      .min(1, 'Pick at least one judge.')
-      .max(DUEL_MAX_JUDGES, `Pick up to ${DUEL_MAX_JUDGES} judges.`),
+    judge_ids: judgeIds,
     notes: text(500),
   })
   .refine((v) => v.recipe_a_id !== v.recipe_b_id, { message: 'Pick two different recipes.', path: ['recipe_b_id'] });
-export type DuelInput = z.input<typeof duelInput>;
 
+/** Two baristas, each brewing their own recipe (the same recipe is fine: then it's all technique). */
+const baristaDuelInput = z
+  .object({
+    kind: z.literal('baristas'),
+    barista_a_id: z.string({ error: 'Pick both baristas.' }).min(1, 'Pick both baristas.').max(100),
+    recipe_a_id: z.string({ error: 'Pick each barista’s recipe.' }).min(1, 'Pick each barista’s recipe.').max(100),
+    barista_b_id: z.string({ error: 'Pick both baristas.' }).min(1, 'Pick both baristas.').max(100),
+    recipe_b_id: z.string({ error: 'Pick each barista’s recipe.' }).min(1, 'Pick each barista’s recipe.').max(100),
+    bean_id: id.nullable().optional(),
+    judge_ids: judgeIds,
+    notes: text(500),
+  })
+  .refine((v) => v.barista_a_id !== v.barista_b_id, { message: 'Pick two different baristas.', path: ['barista_b_id'] });
+
+/** A duel without a kind is a recipe duel (what older versions of the app send). */
+export const duelInput = z.preprocess(
+  (v) => (v && typeof v === 'object' && !('kind' in v) ? { ...v, kind: 'recipes' } : v),
+  z.discriminatedUnion('kind', [recipeDuelInput, baristaDuelInput], { error: 'Pick a recipe duel or a barista duel.' }),
+);
+export type DuelInput = z.input<typeof recipeDuelInput> | z.input<typeof baristaDuelInput>;
+
+const judgeScore = z
+  .number({ error: 'Score every criterion for both cups, from 1 to 10.' })
+  .min(1, 'Scores go from 1 to 10.')
+  .max(10, 'Scores go from 1 to 10.')
+  .multipleOf(0.5, 'Scores go in half steps, like 7 or 7.5.');
+
+export const cupScoresInput = z.object({
+  sweetness: judgeScore,
+  acidity: judgeScore,
+  body: judgeScore,
+  clarity: judgeScore,
+  finish: judgeScore,
+  overall: judgeScore,
+});
+
+/** A judge scores both cups on every criterion, then points at the better one (or can't separate). */
 export const duelVoteInput = z.object({
   choice: z.enum(DUEL_CHOICES, { error: 'Vote X, Y or can’t separate.' }),
+  scores: z.object(
+    { x: cupScoresInput, y: cupScoresInput },
+    { error: 'Score both cups before you vote.' },
+  ),
 });
 export type DuelVoteInput = z.input<typeof duelVoteInput>;
 

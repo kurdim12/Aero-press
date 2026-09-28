@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DuelView, DuelsResponse, RecipeRow, RecipesResponse } from '../../shared/types';
-import { type Client, TEAM_PIN, addBarista, freshDb, recipeBody, setupTeam, signIn } from './helpers';
+import { type Client, TEAM_PIN, addBarista, freshDb, judgeScores, recipeBody, setupTeam, signIn, vote } from './helpers';
 
 beforeEach(freshDb);
 
@@ -39,21 +39,21 @@ describe('blind duels', () => {
     // The helper sees which recipe goes in which cup; the server picked the order.
     expect([duel.x?.id, duel.y?.id].sort()).toEqual([a.id, b.id].sort());
 
-    const early = await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
+    const early = await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
     expect(early.status).toBe(409);
     expect(early.body.error.code).toBe('cups_not_ready');
 
     expect((await owner.post<DuelView>(`/api/duels/${duel.id}/ready`)).body.status).toBe('judging');
-    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
-    const second = await judges[1]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, { choice: 'x' });
+    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
+    const second = await judges[1]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, vote('x'));
     expect(second.body).toMatchObject({ status: 'judging', votes_in: 2, you: { vote: 'x' } });
-    const last = await judges[2]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, { choice: 'y' });
+    const last = await judges[2]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, vote('y'));
     expect(last.body.status).toBe('revealed');
 
     for (const phone of [owner, ...judges.map((j) => j.client)]) {
       const view = (await phone.get<DuelView>(`/api/duels/${duel.id}`)).body;
       expect(view.status).toBe('revealed');
-      expect(view.result).toEqual({ x_votes: 2, y_votes: 1, ties: 0, winner: 'x' });
+      expect(view.result).toEqual({ x_votes: 2, y_votes: 1, ties: 0, winner: 'x', scores: judgeScores(7, 6) });
       expect(view.x?.id).toBe(duel.x?.id);
       expect(view.judges.map((j) => j.choice).sort()).toEqual(['x', 'x', 'y']);
     }
@@ -91,14 +91,14 @@ describe('blind duels', () => {
 
     // The vote responses themselves stay blind until the last vote.
     for (const judge of judges.slice(0, 2)) {
-      const text = JSON.stringify((await judge.client.post(`/api/duels/${duel.id}/vote`, { choice: 'y' })).body);
+      const text = JSON.stringify((await judge.client.post(`/api/duels/${duel.id}/vote`, vote('y'))).body);
       for (const secret of secrets) expect(text).not.toContain(secret);
       await blind(judge.client);
     }
     await blind(onlooker);
 
     // After the reveal everyone sees everything, notes included.
-    const revealed = (await judges[2]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, { choice: 'x' })).body;
+    const revealed = (await judges[2]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, vote('x'))).body;
     expect(revealed.status).toBe('revealed');
     const view = (await onlooker.get<DuelView>(`/api/duels/${duel.id}`)).body;
     expect([view.x?.display_code, view.y?.display_code].sort()).toEqual([a.display_code, b.display_code].sort());
@@ -109,10 +109,10 @@ describe('blind duels', () => {
     const { owner, a, b, judges } = await duelTeam();
     const duel = await startDuel(owner, a, b, [judges[0]!.id, judges[1]!.id, judges[2]!.id]);
     await owner.post(`/api/duels/${duel.id}/ready`);
-    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
-    await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'y' });
-    const last = (await judges[2]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, { choice: 'tie' })).body;
-    expect(last.result).toEqual({ x_votes: 1, y_votes: 1, ties: 1, winner: null });
+    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
+    await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, vote('y'));
+    const last = (await judges[2]!.client.post<DuelView>(`/api/duels/${duel.id}/vote`, vote('tie'))).body;
+    expect(last.result).toEqual({ x_votes: 1, y_votes: 1, ties: 1, winner: null, scores: judgeScores(7, 6) });
     const ranked = (await owner.get<RecipesResponse>('/api/recipes')).body.recipes;
     expect(ranked.find((r) => r.id === a.id)).toMatchObject({ elo: 1500, draws: 1 });
   });
@@ -121,14 +121,14 @@ describe('blind duels', () => {
     const { owner, a, b, judges, onlooker } = await duelTeam();
     const duel = await startDuel(owner, a, b, [judges[0]!.id, judges[1]!.id]);
     await owner.post(`/api/duels/${duel.id}/ready`);
-    expect((await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' })).status).toBe(200);
-    expect((await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' })).status).toBe(200);
-    const changed = await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'y' });
+    expect((await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'))).status).toBe(200);
+    expect((await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'))).status).toBe(200);
+    const changed = await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('y'));
     expect(changed.status).toBe(409);
     expect(changed.body.error.code).toBe('already_voted');
-    expect((await onlooker.post(`/api/duels/${duel.id}/vote`, { choice: 'x' })).body.error.code).toBe('not_a_judge');
-    expect((await owner.post(`/api/duels/${duel.id}/vote`, { choice: 'x' })).body.error.code).toBe('not_a_judge');
-    expect((await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'maybe' })).body.error.field).toBe('choice');
+    expect((await onlooker.post(`/api/duels/${duel.id}/vote`, vote('x'))).body.error.code).toBe('not_a_judge');
+    expect((await owner.post(`/api/duels/${duel.id}/vote`, vote('x'))).body.error.code).toBe('not_a_judge');
+    expect((await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, { ...vote('x'), choice: 'maybe' })).body.error.field).toBe('choice');
   });
 
   it('checks the setup: two recipes, 1 to 3 judges, and the helper can’t judge', async () => {
@@ -157,11 +157,11 @@ describe('blind duels', () => {
     expect((await owner.post(`/api/duels/${duel.id}/reveal`)).body.error.code).toBe('not_judging');
     await owner.post(`/api/duels/${duel.id}/ready`);
     expect((await owner.post(`/api/duels/${duel.id}/reveal`)).body.error.code).toBe('no_votes');
-    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'y' });
+    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('y'));
     expect((await judges[1]!.client.post(`/api/duels/${duel.id}/reveal`)).body.error.code).toBe('not_duel_helper');
     const early = (await owner.post<DuelView>(`/api/duels/${duel.id}/reveal`)).body;
-    expect(early.result).toEqual({ x_votes: 0, y_votes: 1, ties: 0, winner: 'y' });
-    const late = await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
+    expect(early.result).toEqual({ x_votes: 0, y_votes: 1, ties: 0, winner: 'y', scores: judgeScores(7, 6) });
+    const late = await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
     expect(late.body.error.code).toBe('duel_over');
 
     const other = await startDuel(owner, a, b, [judges[0]!.id]);
@@ -179,8 +179,8 @@ describe('blind duels', () => {
     const duel = await startDuel(owner, a, b, [judges[0]!.id, judges[1]!.id]);
     expect((await owner.post(`/api/duels/${duel.id}/rematch`)).body.error.code).toBe('not_revealed');
     await owner.post(`/api/duels/${duel.id}/ready`);
-    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
-    await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
+    await judges[0]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
+    await judges[1]!.client.post(`/api/duels/${duel.id}/vote`, vote('x'));
 
     const rematch = await owner.post<DuelView>(`/api/duels/${duel.id}/rematch`);
     expect(rematch.status).toBe(201);

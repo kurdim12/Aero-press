@@ -80,12 +80,18 @@ const toBoardRecipe = (r: RecipeRow): BoardRecipe => ({
 });
 
 /**
- * Revealed duels since ?3 that each member took part in (the one who poured, and the judges).
- * Bounded by time, so it reads recent duels only, not the team's whole history.
+ * Revealed duels since ?3 that each member took part in (the one who poured or hosted, the
+ * baristas in a barista duel, and the judges). Bounded by time, so it reads recent duels only.
  */
 const PARTICIPANTS = `
   SELECT id AS duel_id, created_by AS member_id FROM duels
    WHERE team_id = ?1 AND status = 'revealed' AND revealed_at >= ?3 AND created_by IS NOT NULL
+  UNION
+  SELECT id, barista_x_id FROM duels
+   WHERE team_id = ?1 AND status = 'revealed' AND revealed_at >= ?3 AND barista_x_id IS NOT NULL
+  UNION
+  SELECT id, barista_y_id FROM duels
+   WHERE team_id = ?1 AND status = 'revealed' AND revealed_at >= ?3 AND barista_y_id IS NOT NULL
   UNION
   SELECT j.duel_id, j.member_id FROM duels dj JOIN duel_judges j ON j.duel_id = dj.id
    WHERE dj.team_id = ?1 AND dj.status = 'revealed' AND dj.revealed_at >= ?3`;

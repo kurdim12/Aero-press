@@ -1,5 +1,5 @@
 // The short reads the coach writes on its own: after a brew (Haiku) and after a duel (Sonnet).
-import type { DuelRead } from '../../../shared/types';
+import { type Criterion, type DuelRead, JUDGING_CRITERIA } from '../../../shared/types';
 import { duelReadOutput } from '../../../shared/schemas';
 import type { DuelDbRow } from '../lib/duels';
 import { listRecipes, recipeBrewAverages } from '../lib/recipes';
@@ -75,23 +75,37 @@ export async function writeBrewRead(scope: AiScope, brewId: string): Promise<voi
 export async function writeDuelRead(scope: AiScope, duel: DuelDbRow, claim: string): Promise<DuelRead> {
   const db = scope.db;
   const team = scope.member.team_id;
-  const [recipes, avgX, avgY, beans] = await Promise.all([
+  const [recipes, avgX, avgY, beans, scores] = await Promise.all([
     listRecipes(db, team),
     recipeBrewAverages(db, team, duel.recipe_x_id),
     recipeBrewAverages(db, team, duel.recipe_y_id),
     db.prepare('SELECT id, name FROM beans WHERE team_id = ?').bind(team).all<{ id: string; name: string }>(),
+    db
+      .prepare(
+        `SELECT cup, ${JUDGING_CRITERIA.map((k) => `ROUND(AVG(${k}), 1) AS ${k}`).join(', ')}
+           FROM duel_scores WHERE duel_id = ? GROUP BY cup`,
+      )
+      .bind(duel.id)
+      .all<{ cup: 'x' | 'y' } & Record<Criterion, number>>(),
   ]);
   const x = recipes.find((r) => r.id === duel.recipe_x_id);
   const y = recipes.find((r) => r.id === duel.recipe_y_id);
   if (!x || !y) throw new Error('duel recipes missing');
-  const winner = duel.winner_recipe_id === x.id ? x.display_code : duel.winner_recipe_id === y.id ? y.display_code : 'draw';
+  const baristas = duel.barista_x_name && duel.barista_y_name ? { x: duel.barista_x_name, y: duel.barista_y_name } : null;
+  const side = duel.x_votes > duel.y_votes ? 'x' : duel.y_votes > duel.x_votes ? 'y' : null;
+  const winner = side === null ? 'draw' : baristas ? `${baristas[side]} (${(side === 'x' ? x : y).display_code})` : (side === 'x' ? x : y).display_code;
+  const judged = (cup: 'x' | 'y') => {
+    const row = scores.results.find((r) => r.cup === cup);
+    return row ? Object.fromEntries(JUDGING_CRITERIA.map((k) => [k, row[k]])) : null;
+  };
   const summary = {
+    kind: baristas ? 'barista duel: two teammates, each brewing their own recipe' : 'recipe duel: one person poured both cups',
     bean: duel.bean_name,
-    cup_x: recipeForCoach(x, avgX),
-    cup_y: recipeForCoach(y, avgY),
+    cup_x: { ...(baristas ? { brewed_by: baristas.x } : {}), judges_average_scores: judged('x'), recipe: recipeForCoach(x, avgX) },
+    cup_y: { ...(baristas ? { brewed_by: baristas.y } : {}), judges_average_scores: judged('y'), recipe: recipeForCoach(y, avgY) },
     winner,
     votes: { x: duel.x_votes, y: duel.y_votes, judges: duel.judge_count },
-    note: 'Elo and records already include this duel.',
+    note: baristas ? 'Barista duels rank the baristas; recipe Elo is unchanged.' : 'Elo and records already include this duel.',
   };
   const out = await askJson(scope, 'duelRead', duelReadOutput, COACH_SYSTEM, duelReadPrompt(summary));
   const read: DuelRead = { read: out.read, next_test: out.next_test ? toExperiment(out.next_test, recipes, beans.results) : null };

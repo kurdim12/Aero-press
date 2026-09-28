@@ -130,3 +130,14 @@ export const recipeBody = (overrides: Record<string, unknown> = {}) => ({
   press_duration_s: 30,
   ...overrides,
 });
+
+// ---------- Duel helpers ----------
+
+/** A judge's scores for both cups on every criterion, as the judging screen sends them. */
+export function judgeScores(x = 7, y = 6) {
+  const cup = (v: number) => ({ sweetness: v, acidity: v, body: v, clarity: v, finish: v, overall: v });
+  return { x: cup(x), y: cup(y) };
+}
+
+/** A judge's vote: scores for both cups, then the pick. */
+export const vote = (choice: 'x' | 'y' | 'tie', x = 7, y = 6) => ({ choice, scores: judgeScores(x, y) });

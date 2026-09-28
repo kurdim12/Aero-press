@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { AppEnv, AuthMember } from '../env';
-import type { DuelReadResponse, DuelView, DuelsResponse } from '../../../shared/types';
+import { replayElo } from '../../../shared/elo';
+import { initialsOf } from '../../../shared/initials';
+import { type BaristaStanding, type BaristaStandingsResponse, type DuelReadResponse, type DuelView, type DuelsResponse, JUDGING_CRITERIA } from '../../../shared/types';
 import { duelInput, duelVoteInput } from '../../../shared/schemas';
 import { requireMember } from '../middleware/auth';
 import { aiSetup } from '../ai/client';
@@ -26,7 +28,7 @@ export const duelRoutes = new Hono<AppEnv>();
 duelRoutes.use('*', requireMember);
 
 async function viewOf(db: D1Database, me: AuthMember, id: string): Promise<DuelView> {
-  const [view] = await loadDuelViews(db, me, [await getDuelRow(db, me.team_id, id)]);
+  const [view] = await loadDuelViews(db, me, [await getDuelRow(db, me.team_id, id)], { scores: true });
   if (!view) throw new ApiError(500, 'server_error', 'Something went wrong on our side. Try again in a moment.');
   return view;
 }
@@ -39,13 +41,19 @@ function assertCanManage(duel: DuelDbRow, me: AuthMember): void {
 
 const duelOver = () => new ApiError(409, 'duel_over', 'This duel is already over. Start a new one or a rematch.');
 
-/** The judges must be active teammates, and not the person pouring (they know which cup is which). */
-async function checkJudges(db: D1Database, me: AuthMember, judgeIds: string[]): Promise<string[]> {
+/**
+ * The judges must be active teammates: not the person pouring or hosting (they know which cup is
+ * which), and not a barista in the duel (they made one of the cups).
+ */
+async function checkJudges(db: D1Database, me: AuthMember, judgeIds: string[], baristas: string[] = []): Promise<string[]> {
   const unique = [...new Set(judgeIds)];
   if (unique.includes(me.id)) {
     throw new ApiError(400, 'helper_cannot_judge', 'You’re pouring, so you know which cup is which. Pick other judges.', {
       field: 'judge_ids',
     });
+  }
+  if (unique.some((judge) => baristas.includes(judge))) {
+    throw new ApiError(400, 'barista_cannot_judge', 'A barista in this duel can’t judge it. Pick other judges.', { field: 'judge_ids' });
   }
   const { results } = await db
     .prepare(`SELECT id FROM members WHERE team_id = ? AND active = 1 AND id IN (SELECT value FROM json_each(?))`)
@@ -59,21 +67,55 @@ async function checkJudges(db: D1Database, me: AuthMember, judgeIds: string[]): 
   return unique;
 }
 
-/** Insert a duel (already pouring) with its judges; X and Y come from the caller. */
+/** Both baristas must be active teammates. */
+async function checkBaristas(db: D1Database, me: AuthMember, a: string, b: string): Promise<void> {
+  const { results } = await db
+    .prepare('SELECT id FROM members WHERE team_id = ? AND active = 1 AND id IN (?, ?)')
+    .bind(me.team_id, a, b)
+    .all<{ id: string }>();
+  if (results.length !== 2) {
+    throw new ApiError(400, 'barista_not_found', 'One of the baristas is no longer on the team. Pick them again.', { field: 'barista_a_id' });
+  }
+}
+
+/** Insert a duel (already pouring) with its judges; X and Y (recipes, and baristas) come from the caller. */
 async function insertDuel(
   db: D1Database,
   me: AuthMember,
-  duel: { x: string; y: string; bean_id: string | null; judges: string[]; notes: string | null; rematch_of: string | null },
+  duel: {
+    x: string;
+    y: string;
+    /** Barista duels: who brews cup X and cup Y. */
+    baristas: { x: string; y: string } | null;
+    bean_id: string | null;
+    judges: string[];
+    notes: string | null;
+    rematch_of: string | null;
+  },
 ): Promise<string> {
   const id = newId();
   const now = Date.now();
   await db.batch([
     db
       .prepare(
-        `INSERT INTO duels (id, team_id, recipe_x_id, recipe_y_id, bean_id, judge_count, status, notes, rematch_of, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pouring', ?, ?, ?, ?)`,
+        `INSERT INTO duels (id, team_id, recipe_x_id, recipe_y_id, barista_x_id, barista_y_id, bean_id, judge_count, status, notes,
+                            rematch_of, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pouring', ?, ?, ?, ?)`,
       )
-      .bind(id, me.team_id, duel.x, duel.y, duel.bean_id, duel.judges.length, duel.notes, duel.rematch_of, me.id, now),
+      .bind(
+        id,
+        me.team_id,
+        duel.x,
+        duel.y,
+        duel.baristas?.x ?? null,
+        duel.baristas?.y ?? null,
+        duel.bean_id,
+        duel.judges.length,
+        duel.notes,
+        duel.rematch_of,
+        me.id,
+        now,
+      ),
     ...duel.judges.map((judge) => db.prepare('INSERT INTO duel_judges (duel_id, member_id) VALUES (?, ?)').bind(id, judge)),
   ]);
   return id;
@@ -89,32 +131,97 @@ duelRoutes.get('/', async (c) => {
   });
 });
 
-/** Start a duel: the server decides which recipe is X and which is Y. */
+/**
+ * Start a duel: the server decides which side is X and which is Y. In a barista duel each barista
+ * brews their own recipe (both may brew the same one), and the one who starts it hosts.
+ */
 duelRoutes.post('/', async (c) => {
   const input = await readJson(c, duelInput);
   const me = c.get('member');
   const db = c.env.DB;
+  const recipeIds = [...new Set([input.recipe_a_id, input.recipe_b_id])];
   const { results } = await db
-    .prepare('SELECT id FROM recipes WHERE team_id = ? AND id IN (?, ?)')
-    .bind(me.team_id, input.recipe_a_id, input.recipe_b_id)
+    .prepare('SELECT id FROM recipes WHERE team_id = ? AND id IN (SELECT value FROM json_each(?))')
+    .bind(me.team_id, JSON.stringify(recipeIds))
     .all<{ id: string }>();
-  if (results.length !== 2) {
+  if (results.length !== recipeIds.length) {
     throw new ApiError(400, 'recipe_not_found', 'One of the recipes no longer exists. Pick the recipes again.', {
       field: 'recipe_a_id',
     });
   }
   await assertTeamBean(db, me.team_id, input.bean_id);
-  const judges = await checkJudges(db, me, input.judge_ids);
+  const baristas = input.kind === 'baristas' ? [input.barista_a_id, input.barista_b_id] : [];
+  if (input.kind === 'baristas') await checkBaristas(db, me, input.barista_a_id, input.barista_b_id);
+  const judges = await checkJudges(db, me, input.judge_ids, baristas);
   const aIsX = coinFlip();
   const id = await insertDuel(db, me, {
     x: aIsX ? input.recipe_a_id : input.recipe_b_id,
     y: aIsX ? input.recipe_b_id : input.recipe_a_id,
+    baristas: input.kind === 'baristas' ? (aIsX ? { x: input.barista_a_id, y: input.barista_b_id } : { x: input.barista_b_id, y: input.barista_a_id }) : null,
     bean_id: input.bean_id ?? null,
     judges,
     notes: input.notes ?? null,
     rematch_of: null,
   });
   return c.json<DuelView>(await viewOf(db, me, id), 201);
+});
+
+/**
+ * The baristas' ranking: Elo and record from revealed barista duels, and the average overall
+ * score judges gave their cups. Read when the Duel tab opens (not polled).
+ */
+duelRoutes.get('/standings', async (c) => {
+  const me = c.get('member');
+  const db = c.env.DB;
+  const [duels, members, overall] = await Promise.all([
+    db
+      .prepare(
+        `SELECT id, barista_x_id, barista_y_id, x_votes, y_votes, revealed_at FROM duels
+          WHERE team_id = ? AND status = 'revealed' AND barista_x_id IS NOT NULL AND revealed_at IS NOT NULL`,
+      )
+      .bind(me.team_id)
+      .all<{ id: string; barista_x_id: string; barista_y_id: string; x_votes: number; y_votes: number; revealed_at: number }>(),
+    db.prepare('SELECT id, name FROM members WHERE team_id = ?').bind(me.team_id).all<{ id: string; name: string }>(),
+    db
+      .prepare(
+        `SELECT CASE s.cup WHEN 'x' THEN d.barista_x_id ELSE d.barista_y_id END AS member_id, AVG(s.overall) AS avg_overall
+           FROM duel_scores s JOIN duels d ON d.id = s.duel_id
+          WHERE d.team_id = ? AND d.status = 'revealed' AND d.barista_x_id IS NOT NULL
+          GROUP BY member_id`,
+      )
+      .bind(me.team_id)
+      .all<{ member_id: string; avg_overall: number | null }>(),
+  ]);
+  const table = replayElo(
+    duels.results.map((d) => ({
+      id: d.id,
+      recipe_x_id: d.barista_x_id,
+      recipe_y_id: d.barista_y_id,
+      winner_recipe_id: d.x_votes > d.y_votes ? d.barista_x_id : d.y_votes > d.x_votes ? d.barista_y_id : null,
+      revealed_at: d.revealed_at,
+      bean_id: null,
+    })),
+  );
+  const names = new Map(members.results.map((m) => [m.id, m.name]));
+  const averages = new Map(overall.results.map((o) => [o.member_id, o.avg_overall]));
+  const baristas: BaristaStanding[] = [...table.entries()]
+    .map(([id, s]) => {
+      const name = names.get(id) ?? '';
+      const avg = averages.get(id);
+      return {
+        id,
+        name,
+        initials: initialsOf(name),
+        elo: Math.round(s.elo),
+        wins: s.wins,
+        losses: s.losses,
+        draws: s.draws,
+        duels: s.duels,
+        avg_overall: avg == null ? null : Math.round(avg * 10) / 10,
+      };
+    })
+    .sort((a, b) => b.elo - a.elo || b.duels - a.duels || a.name.localeCompare(b.name));
+  return c.json<BaristaStandingsResponse>({ baristas });
 });
 
 duelRoutes.get('/:id', async (c) => {
@@ -134,10 +241,13 @@ duelRoutes.post('/:id/ready', async (c) => {
   return c.json<DuelView>(await viewOf(db, me, id));
 });
 
-/** One vote per judge. The last vote reveals the duel in the same transaction. */
+/**
+ * One vote per judge, with their scores for both cups on every criterion. The last vote reveals
+ * the duel in the same transaction.
+ */
 duelRoutes.post('/:id/vote', async (c) => {
   const id = idParam(c, 'duel');
-  const { choice } = await readJson(c, duelVoteInput);
+  const { choice, scores } = await readJson(c, duelVoteInput);
   const me = c.get('member');
   const db = c.env.DB;
   const duel = await getDuelRow(db, me.team_id, id);
@@ -160,10 +270,19 @@ duelRoutes.post('/:id/vote', async (c) => {
   if (duel.status !== 'judging') throw duelOver();
 
   const now = Date.now();
+  const score = (cup: 'x' | 'y') =>
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO duel_scores (duel_id, judge_member_id, cup, ${JUDGING_CRITERIA.join(', ')})
+         VALUES (?, ?, ?, ${JUDGING_CRITERIA.map(() => '?').join(', ')})`,
+      )
+      .bind(id, me.id, cup, ...JUDGING_CRITERIA.map((k) => scores[cup][k]));
   await db.batch([
     db
       .prepare('INSERT OR IGNORE INTO duel_votes (duel_id, judge_member_id, choice, created_at) VALUES (?, ?, ?, ?)')
       .bind(id, me.id, choice, now),
+    score('x'),
+    score('y'),
     revealStatement(db, me.team_id, id, now, true),
   ]);
   return c.json<DuelView>(await viewOf(db, me, id));
@@ -203,9 +322,9 @@ duelRoutes.post('/:id/cancel', async (c) => {
 });
 
 /**
- * Rematch a revealed duel with X and Y swapped, so cup position can't bias the result. Same bean
- * and judges; whoever starts it pours, so they drop out of the judges. Tapping twice returns the
- * same rematch.
+ * Rematch a revealed duel with X and Y swapped, so cup position can't bias the result. Same bean,
+ * judges and (in a barista duel) baristas; whoever starts it pours or hosts, so they drop out of
+ * the judges. Tapping twice returns the same rematch.
  */
 duelRoutes.post('/:id/rematch', async (c) => {
   const id = idParam(c, 'duel');
@@ -227,6 +346,7 @@ duelRoutes.post('/:id/rematch', async (c) => {
   const rematchId = await insertDuel(db, me, {
     x: duel.recipe_y_id,
     y: duel.recipe_x_id,
+    baristas: duel.barista_x_id && duel.barista_y_id ? { x: duel.barista_y_id, y: duel.barista_x_id } : null,
     bean_id: duel.bean_id,
     judges,
     notes: null,

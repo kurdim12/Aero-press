@@ -69,10 +69,12 @@ interface DuelDbRow {
   revealed_at: number;
   recipe_x_id: string;
   recipe_y_id: string;
-  winner_recipe_id: string | null;
   x_votes: number;
   y_votes: number;
   bean_name: string | null;
+  /** Barista duels: who brewed each cup. */
+  barista_x: string | null;
+  barista_y: string | null;
 }
 
 export interface ContextPack {
@@ -235,14 +237,17 @@ export async function buildContextPack(db: D1Database, me: AuthMember, opts: { r
       .all<BrewDbRow>(),
     db
       .prepare(
-        `SELECT d.revealed_at, d.recipe_x_id, d.recipe_y_id, d.winner_recipe_id, d.x_votes, d.y_votes, b.name AS bean_name
+        `SELECT d.revealed_at, d.recipe_x_id, d.recipe_y_id, d.x_votes, d.y_votes, b.name AS bean_name,
+                bx.name AS barista_x, bw.name AS barista_y
            FROM duels d LEFT JOIN beans b ON b.id = d.bean_id
+           LEFT JOIN members bx ON bx.id = d.barista_x_id
+           LEFT JOIN members bw ON bw.id = d.barista_y_id
           WHERE d.team_id = ? AND d.status = 'revealed' AND d.revealed_at IS NOT NULL
-            AND (d.created_by = ? OR EXISTS (
+            AND (d.created_by = ? OR d.barista_x_id = ? OR d.barista_y_id = ? OR EXISTS (
                   SELECT 1 FROM recipes r WHERE r.id IN (d.recipe_x_id, d.recipe_y_id) AND r.owner_member_id = ?))
           ORDER BY d.revealed_at DESC LIMIT ?`,
       )
-      .bind(me.team_id, me.id, me.id, RECENT_LIMIT)
+      .bind(me.team_id, me.id, me.id, me.id, me.id, RECENT_LIMIT)
       .all<DuelDbRow>(),
   ]);
 
@@ -265,14 +270,31 @@ export async function buildContextPack(db: D1Database, me: AuthMember, opts: { r
     beans: beans.results.map((b) => beanForCoach(b, now)),
     recipes: chosen.map((r) => recipeForCoach(r, averagesById.get(r.id))),
     recent_brews: brews.results.map((w) => brewForCoach(w, w.recipe_id ? (codeById.get(w.recipe_id) ?? null) : null)),
-    recent_duels: duels.results.map((d) => ({
-      day: day(d.revealed_at),
-      x: codeById.get(d.recipe_x_id) ?? null,
-      y: codeById.get(d.recipe_y_id) ?? null,
-      winner: d.winner_recipe_id ? (codeById.get(d.winner_recipe_id) ?? null) : 'draw',
-      votes: `${d.x_votes}-${d.y_votes}`,
-      bean: d.bean_name,
-    })),
+    recent_duels: duels.results.map((d) => {
+      const x = codeById.get(d.recipe_x_id) ?? null;
+      const y = codeById.get(d.recipe_y_id) ?? null;
+      const side = d.x_votes > d.y_votes ? 'x' : d.y_votes > d.x_votes ? 'y' : null;
+      // A barista duel: two teammates, each brewing their recipe; the winner is a person.
+      if (d.barista_x && d.barista_y) {
+        return {
+          day: day(d.revealed_at),
+          kind: 'barista duel',
+          x: `${d.barista_x} with ${x}`,
+          y: `${d.barista_y} with ${y}`,
+          winner: side === 'x' ? d.barista_x : side === 'y' ? d.barista_y : 'draw',
+          votes: `${d.x_votes}-${d.y_votes}`,
+          bean: d.bean_name,
+        };
+      }
+      return {
+        day: day(d.revealed_at),
+        x,
+        y,
+        winner: side === 'x' ? x : side === 'y' ? y : 'draw',
+        votes: `${d.x_votes}-${d.y_votes}`,
+        bean: d.bean_name,
+      };
+    }),
   };
   return { pack, recipes };
 }

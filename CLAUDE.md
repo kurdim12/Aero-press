@@ -41,7 +41,7 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   except plain-http local/private-network hosts (so LAN phone testing works in dev).
 - Schema additions beyond the brief: `teams.pin_hash/pin_salt`, `login_attempts.first_failed_at`,
   `duel_judges` table, `duels.rematch_of`, `teams.ai_coach_model/ai_quick_model/ai_auto_tips`,
-  `ai_tips` and `ai_reads` tables.
+  `ai_tips` and `ai_reads` tables, `duels.barista_x_id/barista_y_id`, `duel_scores` table.
 - Hosting: the user stays on **Workers Free** (decided after checkpoint 1; they have the Cloudflare
   Pro *website* plan, which doesn't include Workers Paid). Free allows 10 ms of CPU per request.
   So PIN hashes use 20k PBKDF2 rounds (`PIN_HASH_ITERATIONS` in `worker/src/config.ts`), a
@@ -146,6 +146,31 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
   - The duel screen polls every 2 s until it's revealed or cancelled. The Duel list polls every
     4 s while open, which is how judges find a new duel or a rematch.
   - The leaderboard (on the Duel tab) is computed in the browser from the recipes list.
+- Barista duels and judging criteria (the user chose: keep both duel kinds; judges score, then
+  point; the brew log's six scores). Migration 0007.
+  - A barista duel (`kind: 'baristas'`) is two active members, each brewing a recipe (the same
+    recipe is allowed). The creator hosts and places the cups.
+    - `duels.barista_x_id/barista_y_id` say who brewed which cup; recipe duels leave them NULL.
+    - The coin flip assigns X and Y to the baristas and their recipes together.
+    - Judges can't be the host or a barista (`barista_cannot_judge`).
+  - Visibility follows the recipe rule. Everyone may see who competes (`baristas`, in name order,
+    so it says nothing about the cups). The host sees the mapping, and everyone sees it after the
+    reveal. A barista gets only their own recipe (`you.my_recipe`), never the cup.
+  - Every vote, in either kind of duel, carries scores for both cups on `JUDGING_CRITERIA`: 1–10
+    in half steps, all required.
+    - They're stored in `duel_scores` in the same batch as the vote, one row per judge and cup,
+      and can't change.
+    - They're shown only after the reveal: the averages per cup (`result.scores`) and each
+      judge's own scores. Only the single-duel view loads them; the polled list doesn't.
+    - The judge's unsent sheet survives a reload (localStorage `ap-judge-sheet:<id>`).
+  - The votes decide the winner. `result.winner` comes from `x_votes`/`y_votes`, not from
+    `winner_recipe_id`, because both cups can be one recipe.
+  - Recipe Elo counts recipe duels only: `loadRevealedDuels`, the bean filter and compare's
+    head-to-head all skip barista duels.
+  - Baristas are ranked by `GET /api/duels/standings`, which replays Elo over members and averages
+    the overall score their cups got. The Duel tab reads it once, not on every poll.
+  - The coach's duel read gets the barista names and the judges' averages. The Board's activity
+    counts baristas as participants, and the backup includes `duel_scores`.
 
 - AI (phase 5), all in `worker/src/ai/`:
   - Every call checks the monthly budget first (month-to-date `SUM(cost_usd)` in Amman time, the

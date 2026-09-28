@@ -53,7 +53,7 @@ Return ONLY valid JSON, no text before or after:
 Exactly 3 fixes, most important first, each doable before the championship date.`;
 
 export function duelReadPrompt(summary: unknown): string {
-  return `A blind duel was just revealed. What does the result suggest, and what single test should come next?
+  return `A blind duel was just revealed. What does the result suggest, and what single test should come next? Judges scored both cups from 1 to 10 on sweetness, acidity, body, clarity, finish and overall before pointing; use those averages to say why the winner won. In a barista duel two teammates each brewed their own recipe, so technique matters as much as the recipe.
 
 <duel>
 ${JSON.stringify(summary)}

@@ -80,6 +80,16 @@ Each of these is one AI call from the monthly budget. New coffees and recipes ar
 automatically the first time someone opens them. To review only on request, switch off
 **Automatic coach tips** in **Settings › Team and championship › AI coach**.
 
+**Run a barista duel.** Go to **Duel › Start a duel › Barista duel**:
+- Pick the two baristas, the recipe each one brews (both can brew the same one), the coffee, and
+  1 to 3 judges.
+- You host: your phone shows whose cup goes on X and whose on Y. The baristas see only what to
+  brew, and the judges see nothing until the reveal.
+- Each judge scores both cups from 1 to 10 on sweetness, acidity, body, clarity, finish and
+  overall, then points at the better cup. The votes decide the winner, and the scores show why.
+- The Duel tab ranks the baristas. Recipe duels, where one person pours two recipes, still rank
+  the recipes. Every duel now uses the same score sheet.
+
 **Back up your data.** Go to **Settings › Download backup**. The phone saves one JSON file with
 the beans, recipes, brews, duels, votes, readiness reports and AI usage. It leaves out PINs and
 sign-ins. Keep a copy somewhere safe, for example once a week and before the championship.

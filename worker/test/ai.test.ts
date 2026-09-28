@@ -12,7 +12,7 @@ import type {
   TodayResponse,
 } from '../../shared/types';
 import { aiTransport } from '../src/ai/client';
-import { TEAM_PIN, addBarista, freshDb, recipeBody, setupTeam, signIn } from './helpers';
+import { TEAM_PIN, addBarista, freshDb, recipeBody, setupTeam, signIn, vote } from './helpers';
 
 // A fake Anthropic API: each call takes the next queued reply and is recorded.
 type Reply = (body: Record<string, unknown>) => Response;
@@ -380,7 +380,7 @@ describe('automatic reads', () => {
     const duel = (await owner.post<DuelView>('/api/duels', { recipe_a_id: r1.id, recipe_b_id: r2.id, judge_ids: [linaId] })).body;
     expect((await lina.post(`/api/duels/${duel.id}/read`)).status).toBe(409);
     await owner.post(`/api/duels/${duel.id}/ready`);
-    await lina.post(`/api/duels/${duel.id}/vote`, { choice: 'x' });
+    await lina.post(`/api/duels/${duel.id}/vote`, vote('x'));
 
     const winner = duel.x!;
     replies.push(message(JSON.stringify({ read: `${winner.display_code} won 1-0.`, next_test: experiment(winner.display_code, { temp_c: 89 }) })));
@@ -394,7 +394,7 @@ describe('automatic reads', () => {
     // While one phone is writing it, the others are told to wait.
     const duel2 = (await owner.post<DuelView>('/api/duels', { recipe_a_id: r1.id, recipe_b_id: r2.id, judge_ids: [linaId] })).body;
     await owner.post(`/api/duels/${duel2.id}/ready`);
-    await lina.post(`/api/duels/${duel2.id}/vote`, { choice: 'tie' });
+    await lina.post(`/api/duels/${duel2.id}/vote`, vote('tie'));
     await env.DB.prepare('UPDATE duels SET ai_read = ? WHERE id = ?').bind(`pending:${Date.now()}`, duel2.id).run();
     const waiting = await lina.post<DuelReadResponse>(`/api/duels/${duel2.id}/read`);
     expect(waiting.status).toBe(202);
