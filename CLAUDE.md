@@ -191,6 +191,9 @@ fetching: TanStack Query. Charts (phase 6): Recharts.
     `ai_quick_model`, migration 0004), from `OPENROUTER_MODELS` in `shared/aiModels.ts` (ids and
     Sept 2026 prices; default Gemini 3.8 Flash). A pick no longer on the list falls back to the
     default.
+    - GPT-6 Sol ($2/$10) and GPT-6 Luna ($0.10/$0.50) were added on the user's question (28 Sept
+      2026), and the default was kept. Early independent tests put Sol at low effort level with
+      Gemini 3.8 Flash at about 2.7x the price, and Luna below Flash but far cheaper.
   - Costs:
     - Reservations are priced from that list.
     - Settling uses OpenRouter's reported `usage.cost` (always in the last stream chunk).

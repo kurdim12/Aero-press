@@ -141,6 +141,16 @@ describe('OpenRouter', () => {
     expect((await owner.put<TeamSettings>('/api/team', settings())).body.ai_coach_model).toBe('deepseek/deepseek-v4-pro-0813');
   });
 
+  it('offers GPT-6 Sol and Luna, and sends their OpenRouter ids', async () => {
+    const { owner, r1 } = await team();
+    const saved = await owner.put<TeamSettings>('/api/team', settings({ ai_coach_model: 'openai/gpt-6-sol', ai_quick_model: 'openai/gpt-6-luna' }));
+    expect(saved.status).toBe(200);
+    replies.push(reply(plan(r1.display_code)));
+    expect((await owner.post('/api/coach/plan', {})).status).toBe(200);
+    expect(calls[0]!.body).toMatchObject({ model: 'openai/gpt-6-sol', reasoning: { effort: 'medium', exclude: true } });
+    expect((await owner.get<AiUsage>('/api/coach/usage')).body.models).toEqual({ coach: 'openai/gpt-6-sol', quick: 'openai/gpt-6-luna' });
+  });
+
   it('turns OpenRouter errors into plain messages and only counts calls that may have been billed', async () => {
     const { owner } = await team();
     replies.push(httpError(401, 'No auth credentials found'));

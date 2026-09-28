@@ -23,6 +23,9 @@ export const OPENROUTER_MODELS = [
   { id: 'deepseek/deepseek-v4-pro-0813', label: 'DeepSeek V4 Pro', input: 0.66, output: 1.98 },
   { id: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash', input: 0.035, output: 0.29 },
   { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5', input: 2, output: 10 },
+  // Added 28 Sept 2026 (released 22 Sept); prices from OpenRouter's listings.
+  { id: 'openai/gpt-6-sol', label: 'GPT-6 Sol', input: 2, output: 10 },
+  { id: 'openai/gpt-6-luna', label: 'GPT-6 Luna', input: 0.1, output: 0.5 },
 ] as const satisfies readonly AiModel[];
 
 export type OpenRouterModelId = (typeof OPENROUTER_MODELS)[number]['id'];
